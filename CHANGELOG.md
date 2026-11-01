@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.7.0
-- Musik latar lo-fi chiptune (dibuat di browser dengan WebAudio, tanpa file audio): tombol Musik dan slider volume di bagian atas. Bawaan mati; pilihan diingat.
+- Musik latar lo-fi chiptune (dibuat di browser dengan WebAudio, tanpa file audio): tombol Musik dan slider volume di bagian atas. Tombol Putar/Jeda, Stop, volume − / + dan slider. Bawaan mati; pilihan diingat.
 
 ## 1.6.1
 - Menu Atur agent: tombol "Jadikan aktif" dan "Kelola skill & tool" dihapus.

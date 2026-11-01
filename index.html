@@ -116,7 +116,7 @@ legend{font:400 8px var(--pix);color:var(--acc);padding:0 4px}
 </head>
 <body>
 <main class="app">
-<header class="top"><div><h1>Hermes Pixel Office</h1><p>Satu divisi satu lantai. Agent duduk saat bekerja dan berkeliling saat istirahat.</p></div><div class="tools"><span id="hint"></span><span class="zoom"><button id="zo" aria-label="Perkecil">-</button><button id="zf">Pas</button><button id="zi" aria-label="Perbesar">+</button><button id="mus" aria-label="Musik" aria-pressed="false">&#9834; Musik</button><input id="musv" type="range" min="0" max="100" value="40" aria-label="Volume musik" style="width:64px;vertical-align:middle"><button id="logout" hidden>Keluar</button></span></div></header>
+<header class="top"><div><h1>Hermes Pixel Office</h1><p>Satu divisi satu lantai. Agent duduk saat bekerja dan berkeliling saat istirahat.</p></div><div class="tools"><span id="hint"></span><span class="zoom"><button id="zo" aria-label="Perkecil">-</button><button id="zf">Pas</button><button id="zi" aria-label="Perbesar">+</button><button id="mus" aria-label="Musik" aria-pressed="false">&#9834; Musik</button><button id="musm" aria-label="Kecilkan suara">&#8722;</button><input id="musv" type="range" min="0" max="100" value="40" aria-label="Volume musik" style="width:64px;vertical-align:middle"><button id="musp" aria-label="Besarkan suara">+</button><button id="muss" aria-label="Hentikan musik">&#9632; Stop</button><button id="logout" hidden>Keluar</button></span></div></header>
 <div class="layout">
 <nav id="bld" aria-label="Daftar lantai"></nav>
 <div id="wrap"><canvas id="c" aria-label="Kantor pixel lantai terpilih. Klik agent untuk melihat detail."></canvas></div>
@@ -646,9 +646,13 @@ Promise.all([...Object.entries(X.imgs).map(([k,v])=>load(v).then(i=>IM[k]=i)),..
    lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2400;lp.connect(master);master.connect(ac.destination)}
   if(ac.state==='suspended')ac.resume();on=true;nextT=ac.currentTime+.1;step=0;clearInterval(timer);timer=setInterval(sched,100);sched();ui()}
  function stop(){on=false;clearInterval(timer);if(ac)ac.suspend();ui()}
- function ui(){btn.setAttribute('aria-pressed',on);btn.innerHTML=(on?'&#9835; Musik: Nyala':'&#9834; Musik');btn.classList.toggle('on',on)}
+ function ui(){btn.setAttribute('aria-pressed',on);btn.innerHTML=(on?'&#10074;&#10074; Jeda':'&#9654; Musik');btn.classList.toggle('on',on)}
  btn.onclick=()=>{on?stop():start();sv('hpo_music',on?'1':'0')};
- vol.oninput=()=>{if(master)master.gain.value=vol.value/100*.8;sv('hpo_vol',vol.value)};
+ const setV=n=>{vol.value=Math.max(0,Math.min(100,n));vol.oninput()};
+ document.getElementById('musm').onclick=()=>setV(+vol.value-10);
+ document.getElementById('musp').onclick=()=>setV(+vol.value+10);
+ document.getElementById('muss').onclick=()=>{if(on)stop();sv('hpo_music','0')};
+ vol.oninput=()=>{if(master)master.gain.value=vol.value/100*.8;vol.title='Volume '+vol.value+'%';sv('hpo_vol',vol.value)};
  const v=ld('hpo_vol');if(v!==null)vol.value=v;
  /* browser memblokir suara otomatis: jika terakhir menyala, lanjutkan saat interaksi pertama */
  if(ld('hpo_music')==='1'){const go=()=>{if(!on)start();removeEventListener('pointerdown',go)};addEventListener('pointerdown',go)}
