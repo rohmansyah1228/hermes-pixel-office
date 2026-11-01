@@ -58,6 +58,23 @@ Buka panel **Kelola divisi dan agent** di sisi kanan:
 
 Pengaturan disimpan di server (`~/.hermes/hermes-pixel-office/layout.json`) sehingga sama di semua perangkat. Menyimpan ke server butuh password (`python3 install.py --set-password`), atau akses dari komputer server itu sendiri; di luar itu pengaturan hanya tersimpan di browser. `BRIDGE_ALLOW_EDIT=1` mengizinkan edit tanpa password (tidak disarankan untuk domain publik).
 
+## Menu Atur agent (seperti dashboard Hermes)
+Klik agent lalu **Atur**. Setiap halaman punya tombol **Kembali**.
+
+| Menu | Yang terjadi |
+|---|---|
+| Jadikan aktif * | `hermes profile use <profil>` |
+| Ganti model * | `hermes -p <profil> config set model.default <model>` |
+| Edit deskripsi | Mengubah peran yang tampil di kantor (disimpan di `layout.json`) |
+| Edit SOUL.md * | Membaca dan menulis `SOUL.md` profil (cadangan `SOUL.md.bak`) |
+| Kelola skill & tool | Membuka dashboard Hermes di tab baru (isi URL di Pengaturan atau `HERMES_DASHBOARD_URL`) |
+| Salin perintah CLI | Menyalin `hermes -p <profil>` |
+| Ganti nama * | Nama tampilan di kantor, atau `hermes profile rename` (ID profil; pemetaan divisi ikut dipindahkan) |
+| Divisi dan tampilan | Pindah divisi, kembalikan bawaan |
+| Hapus | Sembunyikan dari kantor, atau `hermes profile delete <profil> --yes` (harus mengetik nama profil) |
+
+Menu bertanda `*` mengubah server Hermes, jadi **mati secara bawaan**. Aktifkan dengan `BRIDGE_ADMIN=1` di `~/.hermes/hermes-pixel-office/config.env` (wajib punya password atau akses dari komputer server), lalu mulai ulang Hermes. Bila perintah `hermes` tidak ada di PATH layanan, isi `HERMES_BIN=/path/ke/hermes`. Agent manual dan subagent hanya punya menu kantor (deskripsi, nama tampilan, divisi, hapus).
+
 ## Chat
 Butuh `HERMES_API_URL` dan `HERMES_API_KEY` (API server Hermes). Pesan dikirim ke `/v1/chat/completions`; kunci tidak pernah sampai ke browser. Tanpa password, chat **mati** secara bawaan supaya orang lain tidak bisa memberi instruksi ke agent Anda. Aktifkan dengan `BRIDGE_OPEN_CHAT=1` hanya bila akses sudah dibatasi (Cloudflare Access atau Tailscale).
 

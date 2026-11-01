@@ -66,7 +66,9 @@ def main(argv=()) -> int:
             "# Chat butuh API server Hermes (API_SERVER_ENABLED=true di ~/.hermes/.env):\n"
             "#HERMES_API_URL=http://127.0.0.1:8642\n#HERMES_API_KEY=\n"
             "# Password halaman: jalankan  python3 install.py --set-password\n"
-            "#BRIDGE_SESSION_MINUTES=120\n", encoding="utf-8")
+            "#BRIDGE_SESSION_MINUTES=120\n"
+            "# Izinkan halaman mengubah SOUL.md, model, nama, dan menghapus profil (wajib password):\n"
+            "#BRIDGE_ADMIN=1\n#HERMES_DASHBOARD_URL=http://127.0.0.1:9119\n", encoding="utf-8")
         print("config   :", cfg)
     elif args.port:
         lines = [l for l in cfg.read_text(encoding="utf-8").splitlines() if not l.startswith("BRIDGE_PORT=")]

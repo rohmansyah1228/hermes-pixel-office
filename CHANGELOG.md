@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0
+- Halaman Atur agent berbentuk menu seperti dashboard Hermes dengan tombol Kembali: jadikan aktif, ganti model, edit deskripsi, edit SOUL.md, kelola skill dan tool, salin perintah CLI, ganti nama, hapus.
+- Endpoint `/admin` (mati secara bawaan; `BRIDGE_ADMIN=1`, wajib login) menjalankan perintah `hermes profile ...` dan mengedit `SOUL.md` dengan validasi nama profil.
+
 ## 1.3.0
 - Panel Kelola divisi dan agent: tambah, ganti nama, urutkan, hapus divisi; ganti nama, pindah divisi, sembunyikan, dan tambah agent. Tombol Atur di detail agent.
 - Pengaturan disimpan di server (`layout.json`) lewat `/layout`; hanya bisa diubah dengan login, atau dari komputer server.

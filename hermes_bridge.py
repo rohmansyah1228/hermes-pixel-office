@@ -18,11 +18,11 @@ Keamanan (penting bila dibuka lewat domain publik / Cloudflare):
   BRIDGE_SESSION_MINUTES (bawaan 120) tanpa aktivitas, lalu harus memasukkan password lagi.
   Tanpa password, chat dimatikan kecuali BRIDGE_OPEN_CHAT=1 (tidak disarankan).
 """
-import hashlib, hmac, html, json, os, secrets, sqlite3, threading, time, urllib.error, urllib.parse, urllib.request
+import hashlib, hmac, html, json, os, re, secrets, sqlite3, subprocess, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 HERE = Path(__file__).resolve().parent
 
 
@@ -70,6 +70,9 @@ MAX_AGENTS = int(ENV("HERMES_MAX_AGENTS", "40"))
 VIEW = ENV("HERMES_VIEW", "agents")  # agents = satu profil Hermes satu agent; sessions = satu sesi satu agent
 DIVISION_DEFAULT = ENV("HERMES_DIVISION", "Hermes")
 ALLOW_EDIT = ENV("BRIDGE_ALLOW_EDIT", "") == "1"
+ADMIN = ENV("BRIDGE_ADMIN", "") == "1"   # izinkan ubah SOUL.md, model, ganti nama, hapus profil dari halaman
+HERMES_BIN = ENV("HERMES_BIN", "hermes")
+DASHBOARD_URL = ENV("HERMES_DASHBOARD_URL", "").strip().rstrip("/")
 LAYOUT = root_home() / "hermes-pixel-office" / "layout.json"
 
 
@@ -548,6 +551,99 @@ def write_layout(o):
     os.replace(tmp, LAYOUT)
 
 
+# ---------------------------------------------------------------- admin profil (SOUL.md, model, rename, hapus)
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def profile_home(name):
+    for n, h in list_profiles():
+        if n == name:
+            return h
+    return None
+
+
+def run_hermes(args, timeout=60):
+    env = dict(os.environ, HERMES_HOME=str(root_home()))
+    try:
+        r = subprocess.run([HERMES_BIN] + args, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL)
+    except FileNotFoundError:
+        raise RuntimeError(f"perintah '{HERMES_BIN}' tidak ditemukan di server (atur HERMES_BIN di config.env)")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("perintah Hermes terlalu lama")
+    out = ((r.stdout or "") + (r.stderr or "")).strip()[-600:]
+    if r.returncode != 0:
+        raise RuntimeError(out or f"hermes keluar dengan kode {r.returncode}")
+    return out
+
+
+def migrate_profile_key(old, new):
+    """Setelah profil diganti nama, pindahkan kunci di layout.json dan divisions.json."""
+    lay = read_layout()
+    if lay:
+        ag = lay.get("ag", {})
+        if "profile:" + old in ag:
+            ag["profile:" + new] = ag.pop("profile:" + old)
+        write_layout(lay)
+    f = root_home() / "hermes-pixel-office" / "divisions.json"
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+        if old in d:
+            d[new] = d.pop(old)
+            f.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except (OSError, ValueError):
+        pass
+
+
+def do_admin(j):
+    act, name = str(j.get("action") or ""), str(j.get("profile") or "")
+    if not NAME_RE.fullmatch(name):
+        raise ValueError("nama profil tidak valid")
+    home = profile_home(name)
+    if home is None:
+        raise ValueError("profil tidak ditemukan")
+    named = name != "default"
+    if act == "soul_get":
+        try:
+            return {"ok": True, "text": (home / "SOUL.md").read_text(encoding="utf-8")}
+        except FileNotFoundError:
+            return {"ok": True, "text": ""}
+    if act == "soul_set":
+        text = str(j.get("text") or "")
+        if len(text.encode("utf-8")) > 60000:
+            raise ValueError("SOUL.md terlalu besar (maks 60 KB)")
+        f = home / "SOUL.md"
+        if f.exists():
+            f.with_suffix(".md.bak").write_bytes(f.read_bytes())
+        tmp = f.with_suffix(".md.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, f)
+        return {"ok": True, "out": "SOUL.md disimpan (cadangan: SOUL.md.bak). Mulai ulang sesi agent agar berlaku."}
+    if act == "use":
+        return {"ok": True, "out": run_hermes(["profile", "use", name]) or f"Profil aktif: {name}"}
+    if act == "model":
+        model = str(j.get("model") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9._:/@+-]{1,120}", model):
+            raise ValueError("nama model tidak valid")
+        args = (["-p", name] if named else []) + ["config", "set", "model.default", model]
+        return {"ok": True, "out": run_hermes(args) or f"Model {name}: {model}"}
+    if act == "rename":
+        new = str(j.get("new") or "")
+        if not named:
+            raise ValueError("profil default tidak bisa diganti nama ID-nya")
+        if not NAME_RE.fullmatch(new) or profile_home(new) is not None:
+            raise ValueError("nama baru tidak valid atau sudah dipakai (huruf kecil, angka, - dan _)")
+        out = run_hermes(["profile", "rename", name, new])
+        migrate_profile_key(name, new)
+        return {"ok": True, "out": out or f"{name} -> {new}"}
+    if act == "delete":
+        if not named:
+            raise ValueError("profil default tidak bisa dihapus")
+        if str(j.get("confirm") or "") != name:
+            raise ValueError("konfirmasi nama tidak cocok")
+        return {"ok": True, "out": run_hermes(["profile", "delete", name, "--yes"]) or f"{name} dihapus"}
+    raise ValueError("aksi tidak dikenal")
+
+
 # ---------------------------------------------------------------- password + sesi
 def hash_password(pw, iters=200000):
     salt = secrets.token_hex(16)
@@ -668,7 +764,7 @@ class Handler(BaseHTTPRequestHandler):
         route = u.path
         if route in ("/health", "/healthz"):
             return self.send(200, {"ok": True, "app": "hermes-pixel-office", "version": VERSION,
-                                   "source": source_mode(), "chat": bool(CHAT_URL or API) and (AUTH_ON or OPEN_CHAT), "auth": AUTH_ON, "edit": AUTH_ON or ALLOW_EDIT})
+                                   "source": source_mode(), "chat": bool(CHAT_URL or API) and (AUTH_ON or OPEN_CHAT), "auth": AUTH_ON, "edit": AUTH_ON or ALLOW_EDIT, "admin": ADMIN, "dashboard": DASHBOARD_URL})
         if AUTH_ON and route == "/login":
             return self.login_page() if not self.authed() else self.send(302, b"", "text/plain", {"Location": "/"})
         if not self.authed():
@@ -712,6 +808,20 @@ class Handler(BaseHTTPRequestHandler):
         if AUTH_ON and route == "/logout":
             end_session(self.cookie_tok())
             return self.send(200, {"ok": True}, extra={"Set-Cookie": "hps=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"})
+        if route == "/admin":
+            if not ADMIN:
+                return self.send(403, {"error": "Fitur admin mati. Isi BRIDGE_ADMIN=1 di config.env lalu mulai ulang Hermes."})
+            if not self.can_edit():
+                return self.send(403, {"error": "Butuh login (python3 install.py --set-password)."})
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                if not 0 < n <= 100000:
+                    raise ValueError("body tidak valid")
+                return self.send(200, do_admin(json.loads(self.rfile.read(n))))
+            except (ValueError, KeyError) as exc:
+                return self.send(400, {"ok": False, "error": str(exc)[:200]})
+            except Exception as exc:
+                return self.send(500, {"ok": False, "error": str(exc)[:300]})
         if route == "/layout":
             if not self.can_edit():
                 return self.send(403, {"error": "edit tidak diizinkan: pasang password (python3 install.py --set-password)"})

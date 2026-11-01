@@ -93,6 +93,7 @@ legend{font:400 8px var(--pix);color:var(--acc);padding:0 4px}
 .mgr{display:grid;gap:8px}.mgr h4{margin:6px 0 0;font:400 8px/1.6 var(--pix);color:var(--acc);text-transform:uppercase}
 .mgr .add{display:grid;gap:5px}.mgr .msg{color:var(--acc);font-size:15px}
 .sm.arm{background:#a33;color:#fff}
+.menu{display:grid;gap:4px}.mi{display:block;width:100%;text-align:left;font-family:var(--txt);font-size:18px;text-transform:none;padding:8px 10px}.mi.danger{color:#ff7a74}.side textarea{font-size:16px;line-height:1.2;resize:vertical}
 .ed{display:grid;gap:7px}.ed label{display:grid;gap:2px;font-size:16px;color:var(--mute)}
 @media (min-width:1100px){
  .app{height:100dvh;grid-template-rows:auto minmax(0,1fr);padding:10px 14px}
@@ -135,7 +136,7 @@ legend{font:400 8px var(--pix);color:var(--acc);padding:0 4px}
 <aside class="rail" aria-label="Menu samping">
 <section id="side" class="side" aria-live="polite"></section>
 <details id="set" class="pn"><summary>Pengaturan</summary><div class="setgrid">
-<label>Endpoint chat (URL)<input id="chatUrl" placeholder="/chat"></label><label>Model chat (opsional)<input id="chatModel"></label>
+<label>Endpoint chat (URL)<input id="chatUrl" placeholder="/chat"></label><label>Model chat (opsional)<input id="chatModel"></label><label>URL dashboard Hermes<input id="dashUrl" placeholder="http://127.0.0.1:9119"></label>
 <label>Feed Hermes (URL)<input id="feedUrl" placeholder="http://127.0.0.1:8114/feed"></label><button id="feedGo">Hubungkan</button><button id="feedOff">Mode demo</button>
 <label>Tema<select id="sTheme"><option value="default">Default</option><option value="midnight">Midnight</option><option value="amber">Amber</option><option value="juniper">Juniper</option></select></label>
 <label>Suasana<select id="sAmb"><option value="auto">Otomatis</option><option value="day">Siang</option><option value="night">Malam</option></select></label>
@@ -425,28 +426,59 @@ document.getElementById('mgrBody').addEventListener('click',e=>{const b=e.target
  else if(m==='unhide'){const o=LAY.ag[b.dataset.id];if(o){delete o.hide;if(!Object.keys(o).length)delete LAY.ag[b.dataset.id]}laySave('Agent ditampilkan lagi')}
  else if(m==='resetall'){if(armed!=='all'){armed='all';b.textContent='Yakin? Semua perubahan hilang';b.classList.add('arm');setTimeout(()=>{armed=null;b.textContent='Kembalikan semua ke bawaan';b.classList.remove('arm')},3500);return}
   armed=null;LAY={divs:[],added:[],ren:{},ag:{},extra:[]};laySave('Dikembalikan ke bawaan')}});
+let EDITV='menu';
+const profOf=a=>a&&/^profile:/.test(a.id)?a.id.slice(8):'';
+const edMsg=(txt,bad)=>{const m=$('edMsg');if(m){m.textContent=txt||'';m.style.color=bad?'#ff7a74':''}};
+const dashUrl=()=>(S.dashUrl||(BR&&BR.dashboard)||'').replace(/\/+$/,'');
+async function adm(action,extra,prof){
+ if(!BR)return{ok:false,error:'Menu ini butuh server bridge. Buka halaman lewat alamat server Hermes Anda.'};
+ if(!BR.admin)return{ok:false,error:'Fitur admin mati di server. Isi BRIDGE_ADMIN=1 di ~/.hermes/hermes-pixel-office/config.env lalu mulai ulang Hermes.'};
+ try{const r=await fetch('/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,profile:prof,...extra})});
+  if(r.status===401){location.reload();return{ok:false,error:'Sesi habis'}}
+  const j=await r.json().catch(()=>({}));return r.ok&&j.ok?j:{ok:false,error:j.error||('HTTP '+r.status)}}catch(e){return{ok:false,error:'Server tidak terjangkau'}}}
+const back=(v)=>`<button class="sm" data-v="${v||'menu'}">&larr; Kembali</button>`;
 function editHtml(a){
- const names=divNames(),cur=divOf(a).replace(/ \d+$/,''),isM=LAY.extra.some(x=>x.id===a.id);
- return`<div class="ph"><b>Atur agent</b></div><small>${esc(a.id)}</small>
-<div class="ed"><label>Nama<input id="edName" value="${esc(a.name)}" maxlength="40"></label><label>Peran<input id="edRole" value="${esc(a.role)}" maxlength="40"></label>
-<label>Divisi (lantai)<select id="edDiv">${names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('')}<option value="__new">+ Divisi baru...</option></select></label>
-<label id="edNewL" hidden>Nama divisi baru<input id="edDivNew" maxlength="40"></label>
-<div class="rl"><button data-act="save">Simpan</button><button data-act="cancel">Batal</button></div>
-<small>Perubahan tampil di semua perangkat bila disimpan di server.</small>
-<div class="rl">${isM?'<button class="sm" data-act="delmanual">Hapus agent</button>':'<button class="sm" data-act="hide">Sembunyikan dari kantor</button>'}<button class="sm" data-act="reset">Kembalikan bawaan</button></div></div>`}
+ const pr=profOf(a),isM=LAY.extra.some(x=>x.id===a.id),names=divNames(),cur=divOf(a).replace(/ \d+$/,''),V=EDITV;
+ const head=(title,v)=>`<div class="ph">${v?back(v):'<button class="sm" data-act="cancel">&larr; Kembali</button>'}<b>${esc(title)}</b></div><small>${esc(a.name)} &middot; ${esc(a.id)}</small><div id="edMsg" class="msg" role="status"></div>`;
+ if(V==='model')return head('Ganti model','menu')+`<div class="ed"><label>Model (mis. anthropic/claude-sonnet-4)<input id="edModel" maxlength="120" placeholder="provider/nama-model"></label><div class="rl"><button data-act="savemodel">Simpan</button></div><small>Menjalankan: hermes -p ${esc(pr)} config set model.default ...</small></div>`;
+ if(V==='desc')return head('Edit deskripsi','menu')+`<div class="ed"><label>Deskripsi / peran (tampil di kantor)<input id="edRole" value="${esc(a.role)}" maxlength="40"></label><div class="rl"><button data-act="savedesc">Simpan</button></div><small>Tersimpan di pengaturan kantor, bukan di Hermes.</small></div>`;
+ if(V==='soul')return head('Edit SOUL.md','menu')+`<div class="ed"><label>SOUL.md (kepribadian dan instruksi agent)<textarea id="edSoul" rows="12" disabled placeholder="Memuat..."></textarea></label><div class="rl"><button data-act="savesoul">Simpan</button></div><small>Cadangan lama disimpan sebagai SOUL.md.bak. Berlaku di sesi berikutnya.</small></div>`;
+ if(V==='rename')return head('Ganti nama','menu')+`<div class="ed"><label>Nama tampilan di kantor<input id="edName" value="${esc(a.name)}" maxlength="40"></label><div class="rl"><button data-act="saverename">Simpan nama tampilan</button></div>${pr&&pr!=='default'?`<h3>Nama profil Hermes (ID)</h3><label>Nama baru (huruf kecil, angka, - dan _)<input id="edNewId" maxlength="64" value="${esc(pr)}"></label><div class="rl"><button data-act="realrename">Ganti nama profil</button></div><small>Menjalankan: hermes profile rename ${esc(pr)} ... Pemetaan divisi ikut dipindahkan. Alias perintah profil berubah.</small>`:''}</div>`;
+ if(V==='layout')return head('Divisi dan tampilan','menu')+`<div class="ed"><label>Divisi (lantai)<select id="edDiv">${names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('')}<option value="__new">+ Divisi baru...</option></select></label><label id="edNewL" hidden>Nama divisi baru<input id="edDivNew" maxlength="40"></label><div class="rl"><button data-act="savelayout">Simpan</button><button class="sm" data-act="reset">Kembalikan bawaan</button></div></div>`;
+ if(V==='delete')return head('Hapus','menu')+`<div class="ed"><p>${isM?'Agent manual ini akan dihapus dari kantor.':'Sembunyikan agent dari kantor (data di Hermes tidak disentuh).'}</p><div class="rl">${isM?'<button data-act="delmanual">Hapus agent</button>':'<button data-act="hide">Sembunyikan dari kantor</button>'}</div>
+${pr&&pr!=='default'?`<h3>Hapus profil Hermes permanen</h3><p class="err">Menghapus seluruh profil ${esc(pr)} di server: konfigurasi, memori, sesi, dan skill. Tidak bisa dibatalkan.</p><label>Ketik <b>${esc(pr)}</b> untuk konfirmasi<input id="edConfirm" autocomplete="off"></label><div class="rl"><button class="sm arm" data-act="realdelete">Hapus profil permanen</button></div><small>Menjalankan: hermes profile delete ${esc(pr)} --yes</small>`:''}</div>`;
+ const note=!BR?'Mode demo atau tanpa server: menu bertanda * butuh bridge.':(!BR.admin?'Menu bertanda * dimatikan di server (BRIDGE_ADMIN=1).':'');
+ return head('Atur agent')+`${note?`<small>${esc(note)}</small>`:''}<div class="menu">
+${pr?'<button class="mi" data-act="use">&#10003; Jadikan aktif *</button><button class="mi" data-v="model">Ganti model *</button>':''}<button class="mi" data-v="desc">Edit deskripsi</button>
+${pr?'<button class="mi" data-v="soul">Edit SOUL.md *</button><button class="mi" data-act="skills">Kelola skill &amp; tool</button><button class="mi" data-act="copycli">Salin perintah CLI</button>':''}<button class="mi" data-v="rename">Ganti nama${pr&&pr!=='default'?' *':''}</button><button class="mi" data-v="layout">Divisi dan tampilan</button><button class="mi danger" data-v="delete">Hapus</button></div>`}
 document.getElementById('side').addEventListener('change',e=>{if(e.target.id==='edDiv')$('edNewL').hidden=e.target.value!=='__new'});
-function editAct(act){
- const a=selAgent();if(!a){EDIT=null;renderPanel();return}const id=a.id;
+function showView(v){EDITV=v;$('side').dataset.mode='';renderPanel();if(v==='soul')loadSoul()}
+async function loadSoul(){const a=selAgent(),box=$('edSoul');if(!a||!box)return;const j=await adm('soul_get',{},profOf(a));
+ if(j.ok){box.value=j.text;box.disabled=false;box.placeholder=''}else edMsg(j.error,true)}
+async function copyText(s){try{await navigator.clipboard.writeText(s);return true}catch(e){try{const x=document.createElement('textarea');x.value=s;document.body.appendChild(x);x.select();const ok=document.execCommand('copy');x.remove();return ok}catch(er){return false}}}
+async function editAct(act){
+ const a=selAgent();if(!a){EDIT=null;renderPanel();return}const id=a.id,pr=profOf(a);
+ const busy=m=>edMsg(m||'Memproses...');
  if(act==='cancel'){EDIT=null;renderPanel();return}
- if(act==='save'){const nm=$('edName').value.trim(),rl=$('edRole').value.trim();let dv=$('edDiv').value;
-  if(dv==='__new'){dv=$('edDivNew').value.trim();if(!dv)return;if(!divNames().includes(dv)){LAY.added.push(dv)}}
-  const x=LAY.extra.find(v=>v.id===id);
-  if(x){x.name=nm||x.name;x.role=rl||x.role;x.div=dv}
-  else{const o=LAY.ag[id]=LAY.ag[id]||{};if(nm&&nm!==a.name||o.name)o.name=nm;if(rl&&rl!==a.role||o.role)o.role=rl;o.div=dv}
-  EDIT=null;laySave('Agent diperbarui');return}
+ if(act==='use'){busy();const j=await adm('use',{},pr);edMsg(j.ok?(j.out||'Profil dijadikan aktif'):j.error,!j.ok);return}
+ if(act==='skills'){const u=dashUrl();if(!u){edMsg('Isi "URL dashboard Hermes" di Pengaturan (mis. http://127.0.0.1:9119) atau HERMES_DASHBOARD_URL di server.',true);return}
+  window.open(u+'/skills?profile='+encodeURIComponent(pr),'_blank','noopener');edMsg('Dashboard Hermes dibuka di tab baru.');return}
+ if(act==='copycli'){const c=pr==='default'?'hermes':'hermes -p '+pr;edMsg((await copyText(c))?'Disalin: '+c:'Gagal menyalin. Perintah: '+c,false);return}
+ if(act==='savemodel'){const m=$('edModel').value.trim();if(!m){edMsg('Isi nama model',true);return}busy();const j=await adm('model',{model:m},pr);edMsg(j.ok?(j.out||'Model diganti'):j.error,!j.ok);return}
+ if(act==='savesoul'){busy();const j=await adm('soul_set',{text:$('edSoul').value},pr);edMsg(j.ok?j.out:j.error,!j.ok);return}
+ if(act==='savedesc'||act==='saverename'){const x=LAY.extra.find(v=>v.id===id),val=(act==='savedesc'?$('edRole'):$('edName')).value.trim(),k=act==='savedesc'?'role':'name';
+  if(x){if(val)x[k]=val}else{const o=LAY.ag[id]=LAY.ag[id]||{};if(val)o[k]=val}
+  await laySave(act==='savedesc'?'Deskripsi disimpan':'Nama tampilan disimpan');showView('menu');edMsg(layMsg);return}
+ if(act==='realrename'){const nw=$('edNewId').value.trim();if(!nw||nw===pr){edMsg('Isi nama baru yang berbeda',true);return}busy();const j=await adm('rename',{new:nw},pr);
+  if(j.ok){EDIT=null;SEL=null;try{const r=await fetch('/layout',{cache:'no-store'});if(r.ok){LAY=layNorm(await r.json());sync(LAST)}}catch(e){}layMsg='Profil diganti nama: '+pr+' -> '+nw;mgrSig='';renderPanel();renderMgr(true)}else edMsg(j.error,true);return}
+ if(act==='realdelete'){if($('edConfirm').value.trim()!==pr){edMsg('Ketik nama profil persis sama untuk konfirmasi',true);return}busy();const j=await adm('delete',{confirm:pr},pr);
+  if(j.ok){EDIT=null;SEL=null;layMsg='Profil '+pr+' dihapus';mgrSig='';renderPanel();renderMgr(true)}else edMsg(j.error,true);return}
+ if(act==='savelayout'){let dv=$('edDiv').value;if(dv==='__new'){dv=$('edDivNew').value.trim();if(!dv){edMsg('Isi nama divisi baru',true);return}if(!divNames().includes(dv))LAY.added.push(dv)}
+  const x=LAY.extra.find(v=>v.id===id);if(x)x.div=dv;else(LAY.ag[id]=LAY.ag[id]||{}).div=dv;
+  await laySave('Divisi diperbarui');showView('menu');edMsg(layMsg);return}
  if(act==='hide'){(LAY.ag[id]=LAY.ag[id]||{}).hide=true;LAY.ag[id].name=LAY.ag[id].name||a.name;EDIT=null;SEL=null;laySave('Agent disembunyikan');return}
  if(act==='delmanual'){LAY.extra=LAY.extra.filter(v=>v.id!==id);delete LAY.ag[id];EDIT=null;SEL=null;laySave('Agent dihapus');return}
- if(act==='reset'){delete LAY.ag[id];EDIT=null;laySave('Agent dikembalikan ke bawaan')}}
+ if(act==='reset'){delete LAY.ag[id];await laySave('Agent dikembalikan ke bawaan');showView('menu');edMsg(layMsg)}}
 // ---------- unduh + GitHub ----------
 let DL=null;try{if(window.claude&&claude.use)claude.use('downloads').then(d=>DL=d).catch(()=>{})}catch(e){}
 async function saveFile(name,data,type){
@@ -480,7 +512,7 @@ function meter(v){return`<div class="meter"><i style="width:${Math.round(Math.ma
 function resHtml(r){return`<div class="res"><b>${esc(r.task)}</b><small>${esc(r.name)} · ${new Date(r.t).toLocaleTimeString('id-ID')} · ${fmtDur(r.dur)}</small><span>${esc(r.summary)}</span><div class="rl"><button class="sm" data-act="md" data-r="${r.id}">Unduh .md</button><button class="sm" data-act="json" data-r="${r.id}">Unduh .json</button><button class="sm" data-act="up" data-r="${r.id}"${r.busy?' disabled':''}>${r.busy?'Mengunggah...':r.uploaded?'Unggah ulang':'Upload ke GitHub'}</button></div>${r.uploaded?`<a href="${esc(r.uploaded)}" target="_blank" rel="noopener">Lihat di GitHub</a>`:''}${r.err?`<span class="err">${esc(r.err)}</span>`:''}</div>`}
 function renderPanel(){
  const el=document.getElementById('side'),a=selAgent();let h;
- if(EDIT&&a&&a.id===EDIT){if(el.dataset.mode!=='edit'){el.innerHTML=editHtml(a);el.dataset.mode='edit';hS=''}return}
+ if(EDIT&&a&&a.id===EDIT){const mk2='edit:'+EDITV;if(el.dataset.mode!==mk2){el.innerHTML=editHtml(a);el.dataset.mode=mk2;hS=''}return}
  EDIT=null;el.dataset.mode='';
  if(!a){
   const all=D.flatMap(d=>d.agents),cost=all.reduce((s,x)=>s+(x.m.cost||0),0),tk=all.reduce((s,x)=>s+(x.m.tin||0)+(x.m.tout||0),0);
@@ -501,8 +533,9 @@ function renderPanel(){
 }
 document.getElementById('bld').addEventListener('click',e=>{const b=e.target.closest('button');if(b){F=+b.dataset.f;hB='';ui()}});
 document.getElementById('side').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const act=b.dataset.act;
- if(act==='edit'){EDIT=SEL;renderPanel()}
- else if(['save','cancel','hide','reset','delmanual'].includes(act))editAct(act);
+ if(act==='edit'){EDIT=SEL;EDITV='menu';renderPanel()}
+ else if(EDIT&&b.dataset.v)showView(b.dataset.v);
+ else if(EDIT&&act)editAct(act);
  else if(act==='close'){SEL=null;EDIT=null;renderPanel()}
  else if(act==='sel'){SEL=b.dataset.id;const a=selAgent();if(a){F=flOf(a);hB=''}ui()}
  else{const r=RES.find(x=>x.id===b.dataset.r);if(!r)return;
@@ -511,9 +544,9 @@ setInterval(renderPanel,700);
 // pengaturan
 const $=id=>document.getElementById(id);
 function applySet(){cv.style.filter=THEMES[S.theme]||'none'}
-function loadSet(){$('sTheme').value=S.theme;$('sAmb').value=S.amb;$('sChars').value=String(S.chars);$('sBud').value=S.budget||'';$('chatUrl').value=S.chatUrl||'';$('chatModel').value=S.chatModel||'';$('sLab').checked=S.labels;$('ghRepo').value=GH.repo;$('ghBr').value=GH.branch;$('ghDir').value=GH.dir;$('ghAuto').checked=S.auto;$('ghTok').value=tok();$('ghRem').checked=!!localStorage.getItem('hpo-tok');$('feedUrl').value=FEEDURL}
+function loadSet(){$('sTheme').value=S.theme;$('sAmb').value=S.amb;$('sChars').value=String(S.chars);$('sBud').value=S.budget||'';$('chatUrl').value=S.chatUrl||'';$('chatModel').value=S.chatModel||'';$('dashUrl').value=S.dashUrl||'';$('sLab').checked=S.labels;$('ghRepo').value=GH.repo;$('ghBr').value=GH.branch;$('ghDir').value=GH.dir;$('ghAuto').checked=S.auto;$('ghTok').value=tok();$('ghRem').checked=!!localStorage.getItem('hpo-tok');$('feedUrl').value=FEEDURL}
 $('set').addEventListener('change',e=>{
- S.theme=$('sTheme').value;S.amb=$('sAmb').value;S.chars=+$('sChars').value;S.budget=+$('sBud').value||0;S.labels=$('sLab').checked;S.run=$('sRun').value||'all';S.chatUrl=$('chatUrl').value.trim();S.chatModel=$('chatModel').value.trim();S.auto=$('ghAuto').checked;
+ S.theme=$('sTheme').value;S.amb=$('sAmb').value;S.chars=+$('sChars').value;S.budget=+$('sBud').value||0;S.labels=$('sLab').checked;S.run=$('sRun').value||'all';S.chatUrl=$('chatUrl').value.trim();S.chatModel=$('chatModel').value.trim();S.dashUrl=$('dashUrl').value.trim();S.auto=$('ghAuto').checked;
  GH.repo=$('ghRepo').value.trim();GH.branch=$('ghBr').value.trim()||'main';GH.dir=$('ghDir').value.trim()||'hermes-results';
  try{sessionStorage.removeItem('hpo-tok');localStorage.removeItem('hpo-tok');const v=$('ghTok').value.trim();if(v)(($('ghRem').checked?localStorage:sessionStorage).setItem('hpo-tok',v))}catch(er){}
  keep();applySet()});
