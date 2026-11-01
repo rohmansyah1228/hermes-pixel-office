@@ -1,5 +1,5 @@
 name: hermes-pixel-office
-version: "1.6.1"
+version: "1.7.0"
 description: "Hermes Pixel Office — kantor pixel bertingkat untuk agent Hermes (status waktu nyata, detail, pengaturan agent)."
 author: "rohmansyah1228"
 hooks:

@@ -116,7 +116,7 @@ legend{font:400 8px var(--pix);color:var(--acc);padding:0 4px}
 </head>
 <body>
 <main class="app">
-<header class="top"><div><h1>Hermes Pixel Office</h1><p>Satu divisi satu lantai. Agent duduk saat bekerja dan berkeliling saat istirahat.</p></div><div class="tools"><span id="hint"></span><span class="zoom"><button id="zo" aria-label="Perkecil">-</button><button id="zf">Pas</button><button id="zi" aria-label="Perbesar">+</button><button id="logout" hidden>Keluar</button></span></div></header>
+<header class="top"><div><h1>Hermes Pixel Office</h1><p>Satu divisi satu lantai. Agent duduk saat bekerja dan berkeliling saat istirahat.</p></div><div class="tools"><span id="hint"></span><span class="zoom"><button id="zo" aria-label="Perkecil">-</button><button id="zf">Pas</button><button id="zi" aria-label="Perbesar">+</button><button id="mus" aria-label="Musik" aria-pressed="false">&#9834; Musik</button><input id="musv" type="range" min="0" max="100" value="40" aria-label="Volume musik" style="width:64px;vertical-align:middle"><button id="logout" hidden>Keluar</button></span></div></header>
 <div class="layout">
 <nav id="bld" aria-label="Daftar lantai"></nav>
 <div id="wrap"><canvas id="c" aria-label="Kantor pixel lantai terpilih. Klik agent untuk melihat detail."></canvas></div>
@@ -623,6 +623,36 @@ Promise.all([...Object.entries(X.imgs).map(([k,v])=>load(v).then(i=>IM[k]=i)),..
   if(/^https?:$/.test(location.protocol)&&!/github\.io$|claude\.(ai|com)$|usercontent/.test(location.hostname))
    fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(h=>{if(h&&h.app==='hermes-pixel-office'){if(h.auth){const lb=$('logout');lb.hidden=false;lb.onclick=()=>fetch('/logout',{method:'POST'}).finally(()=>location.reload())}FEEDURL='/feed';$('feedUrl').value='/feed';startFeed('/feed')}}).catch(()=>{})}
 });
+
+/* Musik latar lo-fi chiptune, dibuat langsung di browser (WebAudio), tanpa file audio */
+(()=>{const btn=document.getElementById('mus'),vol=document.getElementById('musv');if(!btn)return;
+ let ac=null,master=null,lp=null,on=false,timer=null,step=0,nextT=0;const BPM=76,SP=60/BPM/2;
+ const ld=k=>{try{return localStorage.getItem(k)}catch(e){return null}},sv=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+ const hz=m=>440*Math.pow(2,(m-69)/12);
+ const CH=[[57,60,64,67],[53,57,60,64],[48,52,55,59],[55,59,62,65]],BASS=[45,41,36,43],PEN=[0,2,4,7,9];
+ function note(t,m,d,type,g,dest){const o=ac.createOscillator(),e=ac.createGain();o.type=type;o.frequency.value=hz(m);
+  e.gain.setValueAtTime(0,t);e.gain.linearRampToValueAtTime(g,t+.012);e.gain.exponentialRampToValueAtTime(.0001,t+d);
+  o.connect(e);e.connect(dest);o.start(t);o.stop(t+d+.05)}
+ function hat(t,g){const n=ac.createBufferSource(),b=ac.createBuffer(1,2205,44100),a=b.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=(Math.random()*2-1)*(1-i/a.length);
+  n.buffer=b;const f=ac.createBiquadFilter();f.type='highpass';f.frequency.value=7000;const e=ac.createGain();e.gain.value=g;n.connect(f);f.connect(e);e.connect(master);n.start(t)}
+ function sched(){while(nextT<ac.currentTime+.3){const bar=Math.floor(step/8)%4,i=step%8,t=nextT,c=CH[bar];
+   if(i===0){note(t,BASS[bar],SP*3.6,'triangle',.5,lp);}if(i===4)note(t,BASS[bar]+(Math.random()<.4?12:0),SP*1.8,'triangle',.35,lp);
+   if(i%2===0)note(t,c[(i/2)%4]+12,SP*1.6,'square',.07,lp);
+   if(i===0)c.forEach(m=>note(t,m,SP*7,'sine',.06,lp));
+   if(Math.random()<.55&&i%2===1||Math.random()<.35){const m=60+12*(Math.random()<.3?1:0)+[0,2,4,7,9][Math.floor(Math.random()*5)]+(bar===1?5:0)*0;note(t+(Math.random()<.3?SP*.05:0),m+12,SP*(1+Math.random()),'triangle',.11,lp)}
+   if(i%2===1)hat(t,i===5?.05:.025);
+   nextT+=SP;step++}}
+ function start(){if(!ac){const C=window.AudioContext||window.webkitAudioContext;if(!C)return;ac=new C();master=ac.createGain();master.gain.value=vol.value/100*.8;
+   lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2400;lp.connect(master);master.connect(ac.destination)}
+  if(ac.state==='suspended')ac.resume();on=true;nextT=ac.currentTime+.1;step=0;clearInterval(timer);timer=setInterval(sched,100);sched();ui()}
+ function stop(){on=false;clearInterval(timer);if(ac)ac.suspend();ui()}
+ function ui(){btn.setAttribute('aria-pressed',on);btn.innerHTML=(on?'&#9835; Musik: Nyala':'&#9834; Musik');btn.classList.toggle('on',on)}
+ btn.onclick=()=>{on?stop():start();sv('hpo_music',on?'1':'0')};
+ vol.oninput=()=>{if(master)master.gain.value=vol.value/100*.8;sv('hpo_vol',vol.value)};
+ const v=ld('hpo_vol');if(v!==null)vol.value=v;
+ /* browser memblokir suara otomatis: jika terakhir menyala, lanjutkan saat interaksi pertama */
+ if(ld('hpo_music')==='1'){const go=()=>{if(!on)start();removeEventListener('pointerdown',go)};addEventListener('pointerdown',go)}
+ ui()})();
 </script>
 </body>
 </html>
