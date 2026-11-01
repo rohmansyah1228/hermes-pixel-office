@@ -10,7 +10,7 @@ git clone https://github.com/rohmansyah1228/hermes-pixel-office.git
 cd hermes-pixel-office
 sudo ./install.sh
 ```
-Skrip ini membuat token akses acak di `/etc/hermes-pixel-office.env`, memasang layanan systemd, dan mengecek `/health`. Lalu buka `http://127.0.0.1:8114/?token=TOKEN` dari server itu sendiri, atau lewat Cloudflare Tunnel / Tailscale (lihat bawah).
+Skrip ini membuat `/etc/hermes-pixel-office.env`, memasang layanan systemd, dan mengecek `/health`. Lalu buka `http://127.0.0.1:8114/` dari server itu sendiri, atau lewat Cloudflare Tunnel / Tailscale (lihat bawah). Token tidak wajib.
 
 ## Dari mana datanya?
 Bridge memilih sumber otomatis (atur di `/etc/hermes-pixel-office.env`):
@@ -24,17 +24,16 @@ Bridge memilih sumber otomatis (atur di `/etc/hermes-pixel-office.env`):
 Pemetaan: satu sesi Hermes = satu agent; `source` (cli, telegram, cron, ...) = divisi/lantai; sesi dengan aktivitas dalam 90 detik terakhir = "bekerja". Bisa diatur lewat `HERMES_ACTIVE_SECONDS`, `HERMES_RECENT_HOURS`, `HERMES_MAX_AGENTS`.
 
 ## Chat
-Butuh `HERMES_API_URL` dan `HERMES_API_KEY` (API server Hermes). Pesan dikirim ke `/v1/chat/completions`; kunci tidak pernah sampai ke browser. Chat **dimatikan** bila `BRIDGE_TOKEN` kosong.
+Butuh `HERMES_API_URL` dan `HERMES_API_KEY` (API server Hermes). Pesan dikirim ke `/v1/chat/completions`; kunci tidak pernah sampai ke browser. Tanpa `BRIDGE_TOKEN`, chat **mati** secara bawaan supaya orang lain tidak bisa memberi instruksi ke agent Anda. Aktifkan dengan `BRIDGE_OPEN_CHAT=1` hanya bila akses sudah dibatasi (Cloudflare Access atau Tailscale).
 
 ## Domain publik (Cloudflare Tunnel)
 Arahkan tunnel ke `http://127.0.0.1:8114`. Untuk keamanan:
-1. Wajib isi `BRIDGE_TOKEN`. Buka sekali `https://domain-anda/?token=TOKEN`; browser menyimpannya.
-2. Disarankan menambah Cloudflare Access di depan domain.
+Tanpa token, siapa pun yang tahu alamatnya bisa melihat daftar agent dan tugasnya. Disarankan memasang **Cloudflare Access** (login email) di depan domain; itu tidak butuh token di alamat. `BRIDGE_TOKEN` tetap tersedia sebagai opsi.
 
 Error 502 dari Cloudflare berarti tunnel tidak bisa menjangkau bridge: cek `systemctl status hermes-pixel-office`, `curl http://127.0.0.1:8114/health`, dan port tujuan di konfigurasi tunnel.
 
 ## Tailscale
-`tailscale serve --bg 8114`, lalu buka `https://nama-server.tailnet.ts.net/?token=TOKEN`.
+`tailscale serve --bg 8114`, lalu buka `https://nama-server.tailnet.ts.net/`.
 
 ## Pemeliharaan
 ```bash
