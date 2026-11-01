@@ -123,7 +123,7 @@ function paint(n){
   if(x>=384&&x<480&&y-48>=600&&y-48<816)return;drawTile(b,g,x,y-48)});
  lay(o,'overhead');X.T['props-over'].forEach(([x,y,g])=>{if(x>=384&&x<480&&y-48>=600&&y-48<816)return;drawTile(o,g,x,y-48)});
  stations(n).forEach(s=>{const sc=4+3*s.src;
-  [8,9].forEach(r=>{const g=gl('walls',sc-1,r);if(g)drawTile(a,g,(s.c0-1)*TS,(s.r+r-8)*TS)});
+  if(s.c0===4)[8,9].forEach(r=>{const g=gl('walls',3,r);if(g)drawTile(a,g,(s.c0-1)*TS,(s.r+r-8)*TS)});
   ['walls','ground','furniture'].forEach(nm=>{for(let dc=0;dc<3;dc++)[8,9].forEach(r=>{const g=gl(nm,sc+dc,r);if(g)drawTile(a,g,(s.c0+dc)*TS,(s.r+r-8)*TS)})});
   for(let dc=0;dc<3;dc++)[9,10].forEach(r=>{const g=gl('overhead',sc+dc,r);if(g)drawTile(o,g,(s.c0+dc)*TS,(s.r+r-8)*TS)});
  });
