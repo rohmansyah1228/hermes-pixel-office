@@ -63,8 +63,6 @@ def main(argv=()) -> int:
         cfg.write_text(
             "# Pengaturan Hermes Pixel Office (KEY=VALUE). Mulai ulang Hermes setelah mengubah.\n"
             f"BRIDGE_PORT={args.port or 8114}\n"
-            "# Chat butuh API server Hermes (API_SERVER_ENABLED=true di ~/.hermes/.env):\n"
-            "#HERMES_API_URL=http://127.0.0.1:8642\n#HERMES_API_KEY=\n"
             "# Password halaman: jalankan  python3 install.py --set-password\n"
             "#BRIDGE_SESSION_MINUTES=120\n"
             "# Izinkan halaman mengubah SOUL.md, model, nama, dan menghapus profil (wajib password):\n"

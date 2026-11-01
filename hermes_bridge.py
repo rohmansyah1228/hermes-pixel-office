@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hermes Pixel Office - jembatan v1.0 (hanya pustaka standar Python).
 
-Menyajikan index.html, /feed (data agent), /chat (kirim instruksi) pada satu alamat.
+Menyajikan index.html dan /feed (data agent) pada satu alamat.
 
 Sumber data /feed (hook plugin Hermes ditumpuk di atas sumber lain agar status waktu nyata):
   1. HERMES_API_URL  : API server Hermes (GET /api/sessions), mis. http://127.0.0.1:8642
@@ -9,20 +9,17 @@ Sumber data /feed (hook plugin Hermes ditumpuk di atas sumber lain agar status w
   3. AGENT_OFFICE_URL: server agent-office (GET /state), mis. http://127.0.0.1:8113
   4. events.jsonl    : ditulis plugin Hermes (python3 install.py), bawaan ~/.hermes/hermes-pixel-office/
 
-Chat: diteruskan ke HERMES_API_URL/v1/chat/completions (atau CHAT_URL bila diisi).
-
 Keamanan (penting bila dibuka lewat domain publik / Cloudflare):
   Password: set BRIDGE_PASSWORD_HASH (disarankan) atau BRIDGE_PASSWORD. Buat hash dengan
             python3 hermes_bridge.py --set-password
   Pengunjung login sekali; sesi tetap aktif selama dipakai dan habis setelah
   BRIDGE_SESSION_MINUTES (bawaan 120) tanpa aktivitas, lalu harus memasukkan password lagi.
-  Tanpa password, chat dimatikan kecuali BRIDGE_OPEN_CHAT=1 (tidak disarankan).
 """
 import hashlib, hmac, html, json, os, re, secrets, sqlite3, subprocess, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 HERE = Path(__file__).resolve().parent
 
 
@@ -57,13 +54,11 @@ PASSWORD = ENV("BRIDGE_PASSWORD", "")
 PASSWORD_HASH = ENV("BRIDGE_PASSWORD_HASH", "").strip()
 SESSION_S = float(ENV("BRIDGE_SESSION_MINUTES", "120")) * 60
 AUTH_ON = bool(PASSWORD or PASSWORD_HASH)
-OPEN_CHAT = ENV("BRIDGE_OPEN_CHAT", "") == "1"
 API = ENV("HERMES_API_URL", "").strip().rstrip("/")
 API_KEY = ENV("HERMES_API_KEY", ENV("API_SERVER_KEY", "")).strip()
 DB = Path(os.path.expanduser(ENV("HERMES_DB", str(hermes_home() / "state.db"))))
 EVENTS = Path(os.path.expanduser(ENV("HERMES_EVENTS", str(root_home() / "hermes-pixel-office" / "events.jsonl"))))
 AO = ENV("AGENT_OFFICE_URL", "").strip().rstrip("/")
-CHAT_URL = ENV("CHAT_URL", "").strip()
 RECENT_H = float(ENV("HERMES_RECENT_HOURS", "12"))   # sesi yang ditampilkan: aktif dalam N jam terakhir
 ACTIVE_S = float(ENV("HERMES_ACTIVE_SECONDS", "90"))  # dianggap "bekerja" bila ada aktivitas dalam N detik
 MAX_AGENTS = int(ENV("HERMES_MAX_AGENTS", "40"))
@@ -483,47 +478,6 @@ def get_feed():
     return base
 
 
-# ---------------------------------------------------------------- chat
-def chat_target(agent_id):
-    """API server Hermes untuk agent ini. chat_targets.json: {"nama-profil": {"url": "...", "key": "..."}, "*": {...}}.
-    Tiap profil punya gateway sendiri; tanpa berkas ini semua chat ke HERMES_API_URL."""
-    name = str(agent_id or "")
-    name = name[8:] if name.startswith("profile:") else ""
-    try:
-        m = json.loads((root_home() / "hermes-pixel-office" / "chat_targets.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        m = {}
-    tgt = m.get(name) or m.get("*")
-    if isinstance(tgt, dict) and isinstance(tgt.get("url"), str) and tgt["url"].startswith(("http://", "https://")):
-        return tgt["url"].rstrip("/"), str(tgt.get("key") or API_KEY)
-    return API, API_KEY
-
-
-def do_chat(body):
-    j = json.loads(body)
-    msg = str(j.get("message") or "").strip()
-    if not msg:
-        return 400, {"error": "pesan kosong"}
-    if CHAT_URL and "chat/completions" not in CHAT_URL:
-        _, out = call(CHAT_URL, data=body, headers={"Content-Type": "application/json"}, timeout=180)
-        return 200, json.loads(out)
-    base, key = chat_target(j.get("agent_id"))
-    url = CHAT_URL or (base + "/v1/chat/completions" if base else "")
-    if not url:
-        return 501, {"error": "Chat belum diatur di server. Aktifkan API server Hermes (API_SERVER_ENABLED=true, API_SERVER_KEY di ~/.hermes/.env, lalu mulai ulang gateway) dan isi HERMES_API_URL + HERMES_API_KEY di ~/.hermes/hermes-pixel-office/config.env."}
-    hist = [m for m in (j.get("history") or []) if isinstance(m, dict) and m.get("role") in ("user", "assistant")][-12:]
-    who = j.get("agent") or "agent"
-    payload = {"model": ENV("HERMES_MODEL", "hermes-agent"), "stream": False,
-               "messages": hist + [{"role": "user", "content": msg}]}
-    h = {"Content-Type": "application/json", **({"Authorization": "Bearer " + key} if key else {})}
-    if j.get("agent_id") and base and not CHAT_URL:
-        h["X-Hermes-Session-Id"] = str(j["agent_id"])
-    _, out = call(url, data=json.dumps(payload).encode(), headers=h, timeout=300)
-    r = json.loads(out)
-    text = ((r.get("choices") or [{}])[0].get("message") or {}).get("content") or r.get("reply") or ""
-    return 200, {"reply": text, "agent": who}
-
-
 # ---------------------------------------------------------------- HTTP
 # ---------------------------------------------------------------- tata letak (divisi/agent yang diatur dari halaman)
 def _s(v, n=60):
@@ -780,7 +734,7 @@ class Handler(BaseHTTPRequestHandler):
         route = u.path
         if route in ("/health", "/healthz"):
             return self.send(200, {"ok": True, "app": "hermes-pixel-office", "version": VERSION,
-                                   "source": source_mode(), "chat": bool(CHAT_URL or API or (root_home() / "hermes-pixel-office" / "chat_targets.json").exists()) and (AUTH_ON or OPEN_CHAT), "auth": AUTH_ON, "edit": AUTH_ON or ALLOW_EDIT, "admin": ADMIN, "dashboard": DASHBOARD_URL})
+                                   "source": source_mode(), "auth": AUTH_ON, "edit": AUTH_ON or ALLOW_EDIT, "admin": ADMIN, "dashboard": DASHBOARD_URL})
         if AUTH_ON and route == "/login":
             return self.login_page() if not self.authed() else self.send(302, b"", "text/plain", {"Location": "/"})
         if not self.authed():
@@ -849,26 +803,7 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, OSError) as exc:
                 return self.send(400, {"error": "layout tidak valid", "detail": str(exc)[:100]})
             return self.send(200, {"ok": True})
-        if route != "/chat":
-            return self.send(404, b"not found", "text/plain")
-        if not AUTH_ON and not OPEN_CHAT:
-            return self.send(403, {"error": "Chat dimatikan: atur password (python3 hermes_bridge.py --set-password) agar aman."})
-        if not self.authed():
-            return self.send(401, {"error": "sesi habis, login lagi"})
-        try:
-            n = int(self.headers.get("Content-Length") or 0)
-            if not 0 < n <= 65536:
-                raise ValueError
-            body = self.rfile.read(n)
-        except ValueError:
-            return self.send(400, {"error": "body 1-65536 byte"})
-        try:
-            code, out = do_chat(body)
-            self.send(code, out)
-        except urllib.error.HTTPError as exc:
-            self.send(exc.code, {"error": f"Hermes membalas HTTP {exc.code}", "detail": exc.read()[:200].decode("utf-8", "replace")})
-        except Exception as exc:
-            self.send(502, {"error": "tidak bisa menghubungi Hermes", "detail": f"{type(exc).__name__}: {exc}"[:200]})
+        self.send(404, b"not found", "text/plain")
 
 
 def make_server():
@@ -903,5 +838,5 @@ if __name__ == "__main__":
         raise SystemExit(cli_set_password(write=False))
     print(f"Hermes Pixel Office {VERSION}  http://{HOST}:{PORT}/")
     print(f"  sumber data : {source_mode()}" + (f" ({API})" if API else f" ({DB})" if source_mode() == "db" else ""))
-    print(f"  password    : {'aktif' if AUTH_ON else 'TIDAK ADA (chat dimatikan)'}")
+    print(f"  password    : {'aktif' if AUTH_ON else 'TIDAK ADA'}")
     make_server().serve_forever()
