@@ -484,6 +484,21 @@ def get_feed():
 
 
 # ---------------------------------------------------------------- chat
+def chat_target(agent_id):
+    """API server Hermes untuk agent ini. chat_targets.json: {"nama-profil": {"url": "...", "key": "..."}, "*": {...}}.
+    Tiap profil punya gateway sendiri; tanpa berkas ini semua chat ke HERMES_API_URL."""
+    name = str(agent_id or "")
+    name = name[8:] if name.startswith("profile:") else ""
+    try:
+        m = json.loads((root_home() / "hermes-pixel-office" / "chat_targets.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        m = {}
+    tgt = m.get(name) or m.get("*")
+    if isinstance(tgt, dict) and isinstance(tgt.get("url"), str) and tgt["url"].startswith(("http://", "https://")):
+        return tgt["url"].rstrip("/"), str(tgt.get("key") or API_KEY)
+    return API, API_KEY
+
+
 def do_chat(body):
     j = json.loads(body)
     msg = str(j.get("message") or "").strip()
@@ -492,15 +507,16 @@ def do_chat(body):
     if CHAT_URL and "chat/completions" not in CHAT_URL:
         _, out = call(CHAT_URL, data=body, headers={"Content-Type": "application/json"}, timeout=180)
         return 200, json.loads(out)
-    url = CHAT_URL or (API + "/v1/chat/completions" if API else "")
+    base, key = chat_target(j.get("agent_id"))
+    url = CHAT_URL or (base + "/v1/chat/completions" if base else "")
     if not url:
-        return 501, {"error": "Chat belum diatur. Isi HERMES_API_URL (dan HERMES_API_KEY) atau CHAT_URL."}
+        return 501, {"error": "Chat belum diatur di server. Aktifkan API server Hermes (API_SERVER_ENABLED=true, API_SERVER_KEY di ~/.hermes/.env, lalu mulai ulang gateway) dan isi HERMES_API_URL + HERMES_API_KEY di ~/.hermes/hermes-pixel-office/config.env."}
     hist = [m for m in (j.get("history") or []) if isinstance(m, dict) and m.get("role") in ("user", "assistant")][-12:]
     who = j.get("agent") or "agent"
     payload = {"model": ENV("HERMES_MODEL", "hermes-agent"), "stream": False,
                "messages": hist + [{"role": "user", "content": msg}]}
-    h = {"Content-Type": "application/json", **api_headers()}
-    if j.get("agent_id") and API and not CHAT_URL:
+    h = {"Content-Type": "application/json", **({"Authorization": "Bearer " + key} if key else {})}
+    if j.get("agent_id") and base and not CHAT_URL:
         h["X-Hermes-Session-Id"] = str(j["agent_id"])
     _, out = call(url, data=json.dumps(payload).encode(), headers=h, timeout=300)
     r = json.loads(out)
@@ -764,7 +780,7 @@ class Handler(BaseHTTPRequestHandler):
         route = u.path
         if route in ("/health", "/healthz"):
             return self.send(200, {"ok": True, "app": "hermes-pixel-office", "version": VERSION,
-                                   "source": source_mode(), "chat": bool(CHAT_URL or API) and (AUTH_ON or OPEN_CHAT), "auth": AUTH_ON, "edit": AUTH_ON or ALLOW_EDIT, "admin": ADMIN, "dashboard": DASHBOARD_URL})
+                                   "source": source_mode(), "chat": bool(CHAT_URL or API or (root_home() / "hermes-pixel-office" / "chat_targets.json").exists()) and (AUTH_ON or OPEN_CHAT), "auth": AUTH_ON, "edit": AUTH_ON or ALLOW_EDIT, "admin": ADMIN, "dashboard": DASHBOARD_URL})
         if AUTH_ON and route == "/login":
             return self.login_page() if not self.authed() else self.send(302, b"", "text/plain", {"Location": "/"})
         if not self.authed():

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.4.0
+- Endpoint chat otomatis `/chat` bila dibuka lewat server; `chat_targets.json` mengarahkan chat ke API server tiap profil; pesan error chat lebih jelas.
 - Halaman Atur agent berbentuk menu seperti dashboard Hermes dengan tombol Kembali: jadikan aktif, ganti model, edit deskripsi, edit SOUL.md, kelola skill dan tool, salin perintah CLI, ganti nama, hapus.
 - Endpoint `/admin` (mati secara bawaan; `BRIDGE_ADMIN=1`, wajib login) menjalankan perintah `hermes profile ...` dan mengedit `SOUL.md` dengan validasi nama profil.
 

@@ -76,7 +76,18 @@ Klik agent lalu **Atur**. Setiap halaman punya tombol **Kembali**.
 Menu bertanda `*` mengubah server Hermes, jadi **mati secara bawaan**. Aktifkan dengan `BRIDGE_ADMIN=1` di `~/.hermes/hermes-pixel-office/config.env` (wajib punya password atau akses dari komputer server), lalu mulai ulang Hermes. Bila perintah `hermes` tidak ada di PATH layanan, isi `HERMES_BIN=/path/ke/hermes`. Agent manual dan subagent hanya punya menu kantor (deskripsi, nama tampilan, divisi, hapus).
 
 ## Chat
-Butuh `HERMES_API_URL` dan `HERMES_API_KEY` (API server Hermes). Pesan dikirim ke `/v1/chat/completions`; kunci tidak pernah sampai ke browser. Tanpa password, chat **mati** secara bawaan supaya orang lain tidak bisa memberi instruksi ke agent Anda. Aktifkan dengan `BRIDGE_OPEN_CHAT=1` hanya bila akses sudah dibatasi (Cloudflare Access atau Tailscale).
+Isi **Endpoint chat (URL)** dengan `/chat`. Bila halaman dibuka lewat server Anda, kolom ini terisi otomatis. Server meneruskan pesan ke API server Hermes, dan kunci API tidak pernah sampai ke browser. Agar chat membalas, aktifkan API server Hermes:
+
+1. Di `~/.hermes/.env` tambahkan `API_SERVER_ENABLED=true` dan `API_SERVER_KEY=<kunci acak>`, lalu mulai ulang gateway (`hermes gateway`).
+2. Di `~/.hermes/hermes-pixel-office/config.env` tambahkan `HERMES_API_URL=http://127.0.0.1:8642` dan `HERMES_API_KEY=<kunci yang sama>`.
+3. Mulai ulang Hermes. Tanpa password, chat tetap mati (lihat bagian password).
+
+Satu API server melayani satu profil. Agar chat sampai ke profil yang dipilih, beri tiap profil port API server sendiri, lalu buat `~/.hermes/hermes-pixel-office/chat_targets.json`:
+```json
+{"content-manager": {"url": "http://127.0.0.1:8643", "key": "KUNCI_PROFIL_INI"},
+ "*": {"url": "http://127.0.0.1:8642", "key": "KUNCI_DEFAULT"}}
+```
+Profil yang tidak tercantum memakai entri `"*"` atau `HERMES_API_URL`. Jalankan `chmod 600` pada berkas ini karena berisi kunci.
 
 ## Domain publik (Cloudflare Tunnel)
 Arahkan tunnel ke `http://127.0.0.1:8114`. Untuk keamanan:

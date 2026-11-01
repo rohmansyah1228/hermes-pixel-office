@@ -382,7 +382,7 @@ async function laySave(msg){
  sync(LAST);mgrSig='';renderMgr(true)}
 function layBoot(){
  if(!/^https?:$/.test(location.protocol)||/github\.io$|claude\.(ai|com)$|usercontent/.test(location.hostname))return;
- fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(h=>{if(!h||h.app!=='hermes-pixel-office')return;BR=h;
+ fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(h=>{if(!h||h.app!=='hermes-pixel-office')return;BR=h;if(!S.chatUrl){S.chatUrl='/chat';keep();loadSet()}
   return fetch('/layout',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{if(j){LAY=layNorm(j);sync(LAST);mgrSig='';renderMgr(true)}})}).catch(()=>{})}
 function setDivName(oldN,newN){const sw=a=>a.map(v=>v===oldN?newN:v);
  LAY.divs=sw(LAY.divs);LAY.added=sw(LAY.added);
