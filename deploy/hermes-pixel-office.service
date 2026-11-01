@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes Pixel Office
+After=network-online.target
+
+[Service]
+User=__USER__
+WorkingDirectory=__DIR__
+EnvironmentFile=/etc/hermes-pixel-office.env
+ExecStart=/usr/bin/python3 __DIR__/hermes_bridge.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

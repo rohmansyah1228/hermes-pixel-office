@@ -1,0 +1,21 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Paket rilis
+        run: |
+          V="${GITHUB_REF_NAME}"
+          mkdir -p "dist/hermes-pixel-office-$V"
+          cp -r index.html hermes_bridge.py install.sh deploy README.md CHANGELOG.md LICENSE "dist/hermes-pixel-office-$V/"
+          (cd dist && zip -r "hermes-pixel-office-$V.zip" "hermes-pixel-office-$V")
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true

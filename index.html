@@ -527,7 +527,9 @@ cv.style.cursor='pointer';
 Promise.all([...Object.entries(X.imgs).map(([k,v])=>load(v).then(i=>IM[k]=i)),...Object.entries(X.chars).map(([k,v])=>load(v).then(i=>CH[k]=i))]).then(()=>{
  layout();paint(1);loadSet();applySet();ui();resize();requestAnimationFrame(frame);
  const q=new URLSearchParams(location.search).get('feed')||(()=>{try{return localStorage.getItem('hpo-feed')}catch(e){return null}})();
- if(q){FEEDURL=q;$('feedUrl').value=q;startFeed(q)}else startDemo();
+ if(q){FEEDURL=q;$('feedUrl').value=q;startFeed(q)}else{startDemo();
+  if(/^https?:$/.test(location.protocol)&&!/github\.io$|claude\.(ai|com)$|usercontent/.test(location.hostname))
+   fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(h=>{if(h&&h.app==='hermes-pixel-office'){if(!S.chatUrl&&h.chat){S.chatUrl='/chat';keep();loadSet()}FEEDURL='/feed';$('feedUrl').value='/feed';startFeed('/feed')}}).catch(()=>{})}
 });
 </script>
 </body>
