@@ -12,6 +12,12 @@ if [ ! -f /etc/hermes-pixel-office.env ]; then
   echo "Dibuat /etc/hermes-pixel-office.env"
 fi
 sed -e "s|__USER__|$RUN_USER|g" -e "s|__DIR__|$DIR|g" "$DIR/deploy/hermes-pixel-office.service" > /etc/systemd/system/hermes-pixel-office.service
+if ! grep -q '^BRIDGE_PASSWORD' /etc/hermes-pixel-office.env; then
+  read -r -p "Buat password untuk halaman ini? (y/N) " ans
+  if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
+    LINE="$(python3 "$DIR/hermes_bridge.py" --hash)" && echo "$LINE" >> /etc/hermes-pixel-office.env && echo "Password disimpan."
+  fi
+fi
 systemctl daemon-reload
 systemctl enable hermes-pixel-office
 systemctl restart hermes-pixel-office

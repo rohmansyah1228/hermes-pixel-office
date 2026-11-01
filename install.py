@@ -4,6 +4,7 @@
     python3 install.py              pasang + aktifkan plugin
     python3 install.py --dry-run    hanya tampilkan apa yang akan dilakukan
     python3 install.py --port 8114  ganti port (disimpan di config.env)
+    python3 install.py --set-password  buat/ganti password halaman (disarankan untuk domain publik)
 Bisa dijalankan ulang kapan saja.
 """
 import argparse
@@ -25,7 +26,12 @@ def main(argv=()) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--port", type=int, default=0)
+    ap.add_argument("--set-password", action="store_true")
     args = ap.parse_args(argv)
+    if args.set_password:
+        sys.path.insert(0, str(HERE))
+        import hermes_bridge
+        return hermes_bridge.cli_set_password() or 0
     home = hermes_home()
     have_hermes = bool(shutil.which("hermes")) or (home / "config.yaml").is_file()
     dest = home / "plugins" / NAME
@@ -59,8 +65,8 @@ def main(argv=()) -> int:
             f"BRIDGE_PORT={args.port or 8114}\n"
             "# Chat butuh API server Hermes (API_SERVER_ENABLED=true di ~/.hermes/.env):\n"
             "#HERMES_API_URL=http://127.0.0.1:8642\n#HERMES_API_KEY=\n"
-            "# Aktifkan chat tanpa token hanya bila akses sudah dibatasi (Cloudflare Access / Tailscale):\n"
-            "#BRIDGE_OPEN_CHAT=1\n#BRIDGE_TOKEN=\n", encoding="utf-8")
+            "# Password halaman: jalankan  python3 install.py --set-password\n"
+            "#BRIDGE_SESSION_MINUTES=120\n", encoding="utf-8")
         print("config   :", cfg)
     elif args.port:
         lines = [l for l in cfg.read_text(encoding="utf-8").splitlines() if not l.startswith("BRIDGE_PORT=")]
@@ -76,6 +82,7 @@ def main(argv=()) -> int:
     print("Selesai. Mulai ulang Hermes agar plugin dimuat (mis. `hermes gateway restart`, atau tutup dan buka lagi `hermes`).")
     print("Buka    : http://127.0.0.1:%s/  (aktif saat Hermes berjalan)" % (args.port or 8114))
     print("Cek     : curl http://127.0.0.1:%s/health" % (args.port or 8114))
+    print("Password: python3 install.py --set-password   (disarankan bila dibuka lewat domain publik)")
     return 0
 
 

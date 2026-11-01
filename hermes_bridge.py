@@ -12,11 +12,13 @@ Sumber data /feed (hook plugin Hermes ditumpuk di atas sumber lain agar status w
 Chat: diteruskan ke HERMES_API_URL/v1/chat/completions (atau CHAT_URL bila diisi).
 
 Keamanan (penting bila dibuka lewat domain publik / Cloudflare):
-  BRIDGE_TOKEN  : bila diisi, semua rute (kecuali /health) wajib memakai token ini.
-                  Buka sekali  https://domain/?token=TOKEN  dan browser menyimpannya sebagai cookie.
-  Tanpa BRIDGE_TOKEN, /chat dimatikan kecuali BRIDGE_OPEN_CHAT=1 (tidak disarankan).
+  Password: set BRIDGE_PASSWORD_HASH (disarankan) atau BRIDGE_PASSWORD. Buat hash dengan
+            python3 hermes_bridge.py --set-password
+  Pengunjung login sekali; sesi tetap aktif selama dipakai dan habis setelah
+  BRIDGE_SESSION_MINUTES (bawaan 120) tanpa aktivitas, lalu harus memasukkan password lagi.
+  Tanpa password, chat dimatikan kecuali BRIDGE_OPEN_CHAT=1 (tidak disarankan).
 """
-import hmac, json, os, sqlite3, time, urllib.error, urllib.parse, urllib.request
+import hashlib, hmac, html, json, os, secrets, sqlite3, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -45,7 +47,10 @@ _load_config()
 ENV = os.environ.get
 HOST = ENV("BRIDGE_HOST", "127.0.0.1")
 PORT = int(ENV("BRIDGE_PORT", "8114"))
-TOKEN = ENV("BRIDGE_TOKEN", "").strip()
+PASSWORD = ENV("BRIDGE_PASSWORD", "")
+PASSWORD_HASH = ENV("BRIDGE_PASSWORD_HASH", "").strip()
+SESSION_S = float(ENV("BRIDGE_SESSION_MINUTES", "120")) * 60
+AUTH_ON = bool(PASSWORD or PASSWORD_HASH)
 OPEN_CHAT = ENV("BRIDGE_OPEN_CHAT", "") == "1"
 API = ENV("HERMES_API_URL", "").strip().rstrip("/")
 API_KEY = ENV("HERMES_API_KEY", ENV("API_SERVER_KEY", "")).strip()
@@ -361,6 +366,71 @@ def do_chat(body):
 
 
 # ---------------------------------------------------------------- HTTP
+# ---------------------------------------------------------------- password + sesi
+def hash_password(pw, iters=200000):
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt), iters).hex()
+    return f"pbkdf2_sha256${iters}${salt}${dk}"
+
+
+def check_password(pw):
+    if PASSWORD_HASH:
+        try:
+            _, iters, salt, dk = PASSWORD_HASH.split("$")
+            got = hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt), int(iters)).hex()
+            return hmac.compare_digest(got, dk)
+        except ValueError:
+            return False
+    return bool(PASSWORD) and hmac.compare_digest(pw.encode(), PASSWORD.encode())
+
+
+_sessions = {}   # token -> waktu aktivitas terakhir
+_fails = {}      # ip -> (jumlah gagal, terkunci sampai)
+_slock = threading.Lock()
+
+
+def new_session():
+    tok = secrets.token_urlsafe(32)
+    with _slock:
+        now = time.time()
+        for k in [k for k, v in _sessions.items() if now - v > SESSION_S]:
+            del _sessions[k]
+        _sessions[tok] = now
+    return tok
+
+
+def session_ok(tok):
+    if not tok:
+        return False
+    with _slock:
+        last = _sessions.get(tok)
+        if last is None:
+            return False
+        now = time.time()
+        if now - last > SESSION_S:
+            del _sessions[tok]
+            return False
+        _sessions[tok] = now   # perpanjang selama masih dipakai
+        return True
+
+
+def end_session(tok):
+    with _slock:
+        _sessions.pop(tok, None)
+
+
+LOGIN_HTML = """<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Masuk - Hermes Pixel Office</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<style>*{box-sizing:border-box;border-radius:0}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#140f1f;color:#f4e9d8;font:18px/1.3 "Lucida Console","DejaVu Sans Mono",monospace;padding:16px}
+form{width:min(380px,100%);background:#241a38;border:3px solid #0b0814;box-shadow:inset 0 0 0 2px #5b4a82,6px 6px 0 #0b0814;padding:22px;display:grid;gap:14px}
+h1{margin:0;font:400 14px/1.5 "Press Start 2P",monospace;color:#ffcc33;text-shadow:3px 3px 0 #7a3b00}p{margin:0;color:#a99bc7;font-size:15px}
+input{width:100%;background:#140f1f;color:#f4e9d8;border:2px solid #5b4a82;padding:10px;font:inherit}
+button{font:400 10px/1.5 "Press Start 2P",monospace;background:#ffcc33;color:#1a1329;border:3px solid #0b0814;padding:12px;cursor:pointer;box-shadow:inset 3px 3px 0 #fff3b8,inset -3px -3px 0 #b88a00}
+button:active{transform:translate(2px,2px)}input:focus-visible,button:focus-visible{outline:3px solid #ffcc33;outline-offset:1px}.e{color:#ff7a74;font-size:15px}</style></head>
+<body><form method="post" action="/login"><h1>Hermes Pixel Office</h1><p>Masukkan password untuk membuka sesi.</p>__ERR__
+<input type="password" name="password" autocomplete="current-password" placeholder="Password" autofocus required><button type="submit">Masuk</button></form></body></html>"""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "HermesPixelOffice/" + VERSION
 
@@ -380,29 +450,40 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def authed(self):
-        if not TOKEN:
-            return True
-        given = self.headers.get("Authorization", "")
-        given = given[7:] if given.lower().startswith("bearer ") else ""
+    def cookie_tok(self):
         for part in self.headers.get("Cookie", "").split(";"):
             k, _, v = part.strip().partition("=")
-            if k == "hpo":
-                given = given or urllib.parse.unquote(v)
-        return hmac.compare_digest(given.encode(), TOKEN.encode())
+            if k == "hps":
+                return v
+        return ""
+
+    def authed(self):
+        return (not AUTH_ON) or session_ok(self.cookie_tok())
+
+    def client_ip(self):
+        return (self.headers.get("CF-Connecting-IP") or self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or self.client_address[0])
+
+    def secure_flag(self):
+        return "; Secure" if (self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+                              or self.headers.get("CF-Visitor", "").find("https") >= 0) else ""
+
+    def login_page(self, err="", code=200):
+        body = LOGIN_HTML.replace("__ERR__", f'<p class="e">{html.escape(err)}</p>' if err else "")
+        self.send(code, body.encode(), "text/html; charset=utf-8")
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         route = u.path
         if route in ("/health", "/healthz"):
             return self.send(200, {"ok": True, "app": "hermes-pixel-office", "version": VERSION,
-                                   "source": source_mode(), "chat": bool(CHAT_URL or API) and (bool(TOKEN) or OPEN_CHAT)})
-        q = urllib.parse.parse_qs(u.query)
-        if TOKEN and q.get("token") and hmac.compare_digest(q["token"][0].encode(), TOKEN.encode()):
-            cookie = f"hpo={urllib.parse.quote(TOKEN)}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict"
-            return self.send(302, b"", "text/plain", {"Location": route or "/", "Set-Cookie": cookie})
+                                   "source": source_mode(), "chat": bool(CHAT_URL or API) and (AUTH_ON or OPEN_CHAT), "auth": AUTH_ON})
+        if AUTH_ON and route == "/login":
+            return self.login_page() if not self.authed() else self.send(302, b"", "text/plain", {"Location": "/"})
         if not self.authed():
-            return self.send(401, "Akses ditolak. Buka alamat ini sekali dengan ?token=TOKEN_ANDA".encode(), "text/plain; charset=utf-8")
+            if route in ("/", "/index.html"):
+                return self.login_page(code=401)
+            return self.send(401, {"error": "sesi habis, login lagi"})
         if route in ("/", "/index.html"):
             return self.send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
         if route == "/feed":
@@ -413,12 +494,37 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if urllib.parse.urlparse(self.path).path != "/chat":
+        route = urllib.parse.urlparse(self.path).path
+        if AUTH_ON and route == "/login":
+            ip = self.client_ip()
+            with _slock:
+                n, until = _fails.get(ip, (0, 0))
+            if time.time() < until:
+                return self.login_page(f"Terlalu banyak percobaan. Coba lagi dalam {int(until - time.time()) + 1} detik.", 429)
+            try:
+                size = min(int(self.headers.get("Content-Length") or 0), 4096)
+                pw = urllib.parse.parse_qs(self.rfile.read(size).decode("utf-8", "replace")).get("password", [""])[0]
+            except ValueError:
+                pw = ""
+            if check_password(pw):
+                with _slock:
+                    _fails.pop(ip, None)
+                cookie = f"hps={new_session()}; Path=/; HttpOnly; SameSite=Strict{self.secure_flag()}"
+                return self.send(303, b"", "text/plain", {"Location": "/", "Set-Cookie": cookie})
+            with _slock:
+                n += 1
+                _fails[ip] = (n, time.time() + (min(2 ** (n - 3), 300) if n >= 3 else 0))
+            time.sleep(0.6)
+            return self.login_page("Password salah.", 401)
+        if AUTH_ON and route == "/logout":
+            end_session(self.cookie_tok())
+            return self.send(200, {"ok": True}, extra={"Set-Cookie": "hps=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"})
+        if route != "/chat":
             return self.send(404, b"not found", "text/plain")
-        if not TOKEN and not OPEN_CHAT:
-            return self.send(403, {"error": "Chat dimatikan: atur BRIDGE_TOKEN agar aman."})
+        if not AUTH_ON and not OPEN_CHAT:
+            return self.send(403, {"error": "Chat dimatikan: atur password (python3 hermes_bridge.py --set-password) agar aman."})
         if not self.authed():
-            return self.send(401, {"error": "token salah"})
+            return self.send(401, {"error": "sesi habis, login lagi"})
         try:
             n = int(self.headers.get("Content-Length") or 0)
             if not 0 < n <= 65536:
@@ -439,8 +545,31 @@ def make_server():
     return ThreadingHTTPServer((HOST, PORT), Handler)
 
 
+def cli_set_password(write=True):
+    import getpass
+    pw = getpass.getpass("Password baru: ")
+    if len(pw) < 6 or pw != getpass.getpass("Ulangi password: "):
+        raise SystemExit("Password minimal 6 karakter dan harus sama.")
+    line = "BRIDGE_PASSWORD_HASH=" + hash_password(pw)
+    if not write:
+        print(line)
+        return
+    f = hermes_home() / "hermes-pixel-office" / "config.env"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    keep = [l for l in (f.read_text(encoding="utf-8").splitlines() if f.exists() else [])
+            if not l.startswith(("BRIDGE_PASSWORD", "#BRIDGE_PASSWORD"))]
+    f.write_text("\n".join(keep + [line]) + "\n", encoding="utf-8")
+    os.chmod(f, 0o600)
+    print("Password disimpan di", f, "- mulai ulang Hermes (atau layanan) agar berlaku.")
+
+
 if __name__ == "__main__":
+    import sys
+    if "--set-password" in sys.argv:
+        raise SystemExit(cli_set_password())
+    if "--hash" in sys.argv:
+        raise SystemExit(cli_set_password(write=False))
     print(f"Hermes Pixel Office {VERSION}  http://{HOST}:{PORT}/")
     print(f"  sumber data : {source_mode()}" + (f" ({API})" if API else f" ({DB})" if source_mode() == "db" else ""))
-    print(f"  token akses : {'aktif' if TOKEN else 'TIDAK ADA (chat dimatikan)'}")
+    print(f"  password    : {'aktif' if AUTH_ON else 'TIDAK ADA (chat dimatikan)'}")
     make_server().serve_forever()

@@ -120,7 +120,7 @@ legend{font:400 8px var(--pix);color:var(--acc);padding:0 4px}
 </head>
 <body>
 <main class="app">
-<header class="top"><div><h1>Hermes Pixel Office</h1><p>Satu divisi satu lantai. Agent duduk saat bekerja dan berkeliling saat istirahat.</p></div><div class="tools"><span id="hint"></span><span class="zoom"><button id="zo" aria-label="Perkecil">-</button><button id="zf">Pas</button><button id="zi" aria-label="Perbesar">+</button></span></div></header>
+<header class="top"><div><h1>Hermes Pixel Office</h1><p>Satu divisi satu lantai. Agent duduk saat bekerja dan berkeliling saat istirahat.</p></div><div class="tools"><span id="hint"></span><span class="zoom"><button id="zo" aria-label="Perkecil">-</button><button id="zf">Pas</button><button id="zi" aria-label="Perbesar">+</button><button id="logout" hidden>Keluar</button></span></div></header>
 <div class="layout">
 <nav id="bld" aria-label="Daftar lantai"></nav>
 <div id="wrap"><canvas id="c" aria-label="Kantor pixel lantai terpilih. Klik agent untuk melihat detail."></canvas></div>
@@ -338,7 +338,7 @@ function startDemo(){stopAll();MODE='demo';demoT=[setInterval(demoStep,3200),set
 let feedT=0;
 function stopAll(){demoT.forEach(clearInterval);demoT=[];clearInterval(feedT)}
 function startFeed(u){stopAll();MODE='live';FEEDURL=u;try{localStorage.setItem('hpo-feed',u)}catch(e){}D=[];
- const poll=()=>fetch(u,{cache:'no-store'}).then(r=>r.json()).then(j=>{feedErr='';sync(normFeed(j));status()}).catch(e=>{feedErr='Feed tidak terjangkau';status()});
+ const poll=()=>fetch(u,{cache:'no-store'}).then(r=>{if(r.status===401){location.reload();throw new Error('sesi habis')}return r.json()}).then(j=>{feedErr='';sync(normFeed(j));status()}).catch(e=>{feedErr='Feed tidak terjangkau';status()});
  poll();feedT=setInterval(poll,2000);status()}
 function status(){const n=D.reduce((s,d)=>s+d.agents.length,0);
  document.getElementById('hint').textContent=(MODE==='live'?'LIVE · '+FEEDURL+(feedErr?' · '+feedErr:''):'MODE DEMO · data contoh (hubungkan feed Hermes di Pengaturan)')+' · '+D.length+' lantai · '+n+' agent · maks '+CAP+' per lantai'}
@@ -442,6 +442,7 @@ async function chatSend(){
   const oai=/chat\/completions/.test(S.chatUrl),hist=CHAT.filter(m=>m.aid===a.id&&m.role!=='sys').slice(-12).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
   const body=oai?{...(S.chatModel?{model:S.chatModel}:{}),messages:hist,stream:false}:{agent:a.name,agent_id:a.id,division:divOf(a),message:text,history:hist.slice(0,-1)};
   const r=await fetch(S.chatUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.status===401){location.reload();return}
   const j=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(pickStr(j.error&&j.error.message,j.error,j.detail)||('HTTP '+r.status));
   const ch=j.choices&&j.choices[0]&&j.choices[0].message;
@@ -529,7 +530,7 @@ Promise.all([...Object.entries(X.imgs).map(([k,v])=>load(v).then(i=>IM[k]=i)),..
  const q=new URLSearchParams(location.search).get('feed')||(()=>{try{return localStorage.getItem('hpo-feed')}catch(e){return null}})();
  if(q){FEEDURL=q;$('feedUrl').value=q;startFeed(q)}else{startDemo();
   if(/^https?:$/.test(location.protocol)&&!/github\.io$|claude\.(ai|com)$|usercontent/.test(location.hostname))
-   fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(h=>{if(h&&h.app==='hermes-pixel-office'){if(!S.chatUrl&&h.chat){S.chatUrl='/chat';keep();loadSet()}FEEDURL='/feed';$('feedUrl').value='/feed';startFeed('/feed')}}).catch(()=>{})}
+   fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(h=>{if(h&&h.app==='hermes-pixel-office'){if(h.auth){const lb=$('logout');lb.hidden=false;lb.onclick=()=>fetch('/logout',{method:'POST'}).finally(()=>location.reload())}if(!S.chatUrl&&h.chat){S.chatUrl='/chat';keep();loadSet()}FEEDURL='/feed';$('feedUrl').value='/feed';startFeed('/feed')}}).catch(()=>{})}
 });
 </script>
 </body>

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.1.0
+- Login dengan password (sesi habis setelah tidak aktif) menggantikan token; tombol Keluar; `python3 install.py --set-password`.
 - Dipasang sebagai plugin Hermes lewat `python3 install.py` (pola yang sama dengan agent-office): `plugin.yaml`, hook sesi/tool/subagent, server web di dalam Hermes.
 - Status waktu nyata dari hook (tool aktif, error, subagent) digabung dengan data sesi.
 - `config.env` di `~/.hermes/hermes-pixel-office/`; `run.py` untuk menjalankan tanpa plugin.
