@@ -3,10 +3,11 @@
 
 Menyajikan index.html, /feed (data agent), /chat (kirim instruksi) pada satu alamat.
 
-Sumber data /feed, dipilih otomatis sesuai urutan ini:
+Sumber data /feed (hook plugin Hermes ditumpuk di atas sumber lain agar status waktu nyata):
   1. HERMES_API_URL  : API server Hermes (GET /api/sessions), mis. http://127.0.0.1:8642
   2. HERMES_DB       : database sesi Hermes (SQLite, dibuka read-only). Bawaan ~/.hermes/state.db
   3. AGENT_OFFICE_URL: server agent-office (GET /state), mis. http://127.0.0.1:8113
+  4. events.jsonl    : ditulis plugin Hermes (python3 install.py), bawaan ~/.hermes/hermes-pixel-office/
 
 Chat: diteruskan ke HERMES_API_URL/v1/chat/completions (atau CHAT_URL bila diisi).
 
@@ -19,8 +20,28 @@ import hmac, json, os, sqlite3, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 HERE = Path(__file__).resolve().parent
+
+
+def hermes_home():
+    return Path(os.environ.get("HERMES_HOME") or "~/.hermes").expanduser()
+
+
+def _load_config():
+    """Baca ~/.hermes/hermes-pixel-office/config.env (KEY=VALUE) tanpa menimpa env yang sudah ada."""
+    f = hermes_home() / "hermes-pixel-office" / "config.env"
+    try:
+        for line in f.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    except OSError:
+        pass
+
+
+_load_config()
 ENV = os.environ.get
 HOST = ENV("BRIDGE_HOST", "127.0.0.1")
 PORT = int(ENV("BRIDGE_PORT", "8114"))
@@ -28,7 +49,8 @@ TOKEN = ENV("BRIDGE_TOKEN", "").strip()
 OPEN_CHAT = ENV("BRIDGE_OPEN_CHAT", "") == "1"
 API = ENV("HERMES_API_URL", "").strip().rstrip("/")
 API_KEY = ENV("HERMES_API_KEY", ENV("API_SERVER_KEY", "")).strip()
-DB = Path(os.path.expanduser(ENV("HERMES_DB", "~/.hermes/state.db")))
+DB = Path(os.path.expanduser(ENV("HERMES_DB", str(hermes_home() / "state.db"))))
+EVENTS = Path(os.path.expanduser(ENV("HERMES_EVENTS", str(hermes_home() / "hermes-pixel-office" / "events.jsonl"))))
 AO = ENV("AGENT_OFFICE_URL", "").strip().rstrip("/")
 CHAT_URL = ENV("CHAT_URL", "").strip()
 RECENT_H = float(ENV("HERMES_RECENT_HOURS", "12"))   # sesi yang ditampilkan: aktif dalam N jam terakhir
@@ -43,6 +65,8 @@ def source_mode():
         return "db"
     if AO:
         return "agent-office"
+    if EVENTS.exists():
+        return "events"
     return "none"
 
 
@@ -176,7 +200,91 @@ def feed_from_ao():
     return json.loads(body)
 
 
-def get_feed():
+# ---------------------------------------------------------------- sumber: hook plugin (waktu nyata)
+def read_events():
+    """Gabungkan events.jsonl (ditulis plugin Hermes) menjadi status per sesi."""
+    if not EVENTS.exists():
+        return {}
+    with open(EVENTS, "rb") as f:
+        f.seek(0, 2)
+        f.seek(max(0, f.tell() - 800000))
+        raw = f.read().decode("utf-8", "replace")
+    ag, now = {}, time.time()
+
+    def get(sid, e):
+        return ag.setdefault(sid, {"id": sid, "platform": e.get("platform") or "hermes", "role": "Hermes", "name": None,
+                                   "state": "idle", "tool": "", "task": "", "tools": 0, "last": e.get("t") or 0,
+                                   "ended": False, "open": 0, "err": False})
+
+    for line in raw.splitlines()[-4000:]:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        ev, t = e.get("event"), e.get("t") or 0
+        if ev == "subagent_start":
+            sid = str(e.get("child_session_id") or "")
+            if not sid:
+                continue
+            parent = ag.get(str(e.get("parent_session_id") or ""))
+            a = get(sid, {"t": t, "platform": parent["platform"] if parent else "hermes"})
+            a.update(role=str(e.get("child_role") or "Subagent"), name=short(e.get("child_role") or "Subagent", 24),
+                     task=short(e.get("child_goal"), 90), state="working", last=t, ended=False)
+            continue
+        sid = str(e.get("session_id") or e.get("child_session_id") or "")
+        if not sid:
+            continue
+        a = get(sid, e)
+        a["last"] = t
+        if e.get("platform"):
+            a["platform"] = e["platform"]
+        if ev == "session_start":
+            a.update(ended=False, state="idle", open=0, err=False)
+        elif ev in ("session_end", "subagent_stop"):
+            a.update(ended=True, state="idle", open=0, tool="", task="")
+        elif ev == "tool_start":
+            a.update(state="working", tool=str(e.get("tool_name") or ""), task=short(e.get("preview") or e.get("tool_name"), 90),
+                     ended=False, err=False)
+            a["open"] += 1
+        elif ev == "tool_end":
+            a["open"] = max(0, a["open"] - 1)
+            a["tools"] += 1
+            if e.get("status") not in (None, "ok", "success") or e.get("error_message"):
+                a["err"] = True
+                a["task"] = short(e.get("error_message") or "tool gagal", 90)
+    out = {}
+    for sid, a in ag.items():
+        idle_for = now - a["last"]
+        if a["ended"] or idle_for > RECENT_H * 3600:
+            a["state"] = "idle"
+        elif a["err"] and idle_for <= ACTIVE_S:
+            a["state"] = "error"
+        elif a["open"] > 0 and idle_for <= 600:
+            a["state"] = "working"
+        elif idle_for <= ACTIVE_S:
+            a["state"] = "working" if a["state"] == "working" else "idle"
+        else:
+            a["state"] = "idle"
+        if a["state"] == "idle":
+            a["tool"] = ""
+            a["task"] = "" if a["state"] == "idle" else a["task"]
+        out[sid] = a
+    return out
+
+
+def feed_from_events_only(ev):
+    out = []
+    for sid, a in ev.items():
+        if a["ended"] and time.time() - a["last"] > 3600:
+            continue
+        out.append({"id": sid, "name": a["name"] or f"{a['platform']} {sid[:4]}", "division": a["platform"], "role": a["role"],
+                    "platform": a["platform"], "state": a["state"], "tool": a["tool"], "task": a["task"],
+                    "metrics": {"tool_calls": a["tools"]}})
+    out.sort(key=lambda x: (x["state"] == "idle", x["division"], x["name"]))
+    return {"agents": out[:MAX_AGENTS], "source": "events"}
+
+
+def get_base_feed():
     mode = source_mode()
     if mode == "api":
         try:
@@ -189,7 +297,42 @@ def get_feed():
         return feed_from_db()
     if mode == "agent-office":
         return feed_from_ao()
-    raise RuntimeError("Tidak ada sumber data. Atur HERMES_API_URL, HERMES_DB, atau AGENT_OFFICE_URL.")
+    return None
+
+
+def get_feed():
+    ev = {}
+    try:
+        ev = read_events()
+    except Exception:
+        pass
+    try:
+        base = get_base_feed()
+    except Exception:
+        if not ev:
+            raise
+        base = None
+    if base is None:
+        if not ev:
+            raise RuntimeError("Tidak ada sumber data. Pasang plugin Hermes (python3 install.py) atau atur HERMES_DB / HERMES_API_URL.")
+        return feed_from_events_only(ev)
+    if not ev or not isinstance(base.get("agents"), list):
+        return base
+    seen = set()
+    for a in base["agents"]:
+        e = ev.get(str(a.get("id")))
+        if not e:
+            continue
+        seen.add(str(a["id"]))
+        a["state"] = e["state"]
+        a["tool"] = e["tool"]
+        a["task"] = e["task"] or a.get("task", "")
+        if e["tools"]:
+            a.setdefault("metrics", {})["tool_calls"] = (a.get("metrics") or {}).get("tool_calls") or e["tools"]
+    extra = feed_from_events_only({k: v for k, v in ev.items() if k not in seen})["agents"]
+    base["agents"] = (base["agents"] + extra)[:MAX_AGENTS]
+    base["source"] = str(base.get("source", "")) + "+events"
+    return base
 
 
 # ---------------------------------------------------------------- chat
@@ -292,8 +435,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send(502, {"error": "tidak bisa menghubungi Hermes", "detail": f"{type(exc).__name__}: {exc}"[:200]})
 
 
+def make_server():
+    return ThreadingHTTPServer((HOST, PORT), Handler)
+
+
 if __name__ == "__main__":
     print(f"Hermes Pixel Office {VERSION}  http://{HOST}:{PORT}/")
     print(f"  sumber data : {source_mode()}" + (f" ({API})" if API else f" ({DB})" if source_mode() == "db" else ""))
     print(f"  token akses : {'aktif' if TOKEN else 'TIDAK ADA (chat dimatikan)'}")
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    make_server().serve_forever()

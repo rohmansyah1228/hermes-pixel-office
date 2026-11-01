@@ -1,0 +1,11 @@
+name: hermes-pixel-office
+version: "1.1.0"
+description: "Hermes Pixel Office — kantor pixel bertingkat untuk agent Hermes (status waktu nyata, detail, chat)."
+author: "rohmansyah1228"
+hooks:
+  - pre_tool_call
+  - post_tool_call
+  - subagent_start
+  - subagent_stop
+  - on_session_start
+  - on_session_end

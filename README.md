@@ -4,13 +4,24 @@ Kantor pixel bertingkat untuk agent Hermes: satu divisi = satu lantai, meja/kurs
 
 Tanpa server, halaman jalan dalam **mode demo**. Untuk data nyata, jalankan `hermes_bridge.py` di server Hermes Anda.
 
-## Pasang di server Hermes (Linux)
+## Pasang sebagai plugin Hermes (disarankan, seperti agent-office)
 ```bash
 git clone https://github.com/rohmansyah1228/hermes-pixel-office.git
 cd hermes-pixel-office
+python3 install.py          # mendeteksi Hermes, memasang plugin, dan mengaktifkannya
+```
+Lalu mulai ulang Hermes (mis. `hermes gateway restart`, atau tutup dan buka lagi `hermes`). Plugin mencatat aktivitas agent lewat hook dan menyalakan halaman di `http://127.0.0.1:8114/` selama Hermes berjalan. Cek dengan `curl http://127.0.0.1:8114/health`. Jalankan ulang `python3 install.py` kapan saja; `git pull` otomatis memperbarui karena plugin berupa tautan ke folder repo. Ganti port dengan `python3 install.py --port 9000`. Pengaturan lain ada di `~/.hermes/hermes-pixel-office/config.env`.
+
+Bila `hermes plugins enable hermes-pixel-office` gagal di versi Hermes Anda, kirim pesan error-nya.
+
+Catatan privasi: ringkasan perintah tool (80 karakter pertama) tampil di halaman. Jangan buka halaman ke publik tanpa pembatasan akses.
+
+## Opsi lain: layanan sendiri (systemd)
+Untuk menjalankan tanpa plugin (data dari database/API Hermes saja):
+```bash
 sudo ./install.sh
 ```
-Skrip ini membuat `/etc/hermes-pixel-office.env`, memasang layanan systemd, dan mengecek `/health`. Lalu buka `http://127.0.0.1:8114/` dari server itu sendiri, atau lewat Cloudflare Tunnel / Tailscale (lihat bawah). Token tidak wajib.
+Skrip ini membuat `/etc/hermes-pixel-office.env`, memasang layanan systemd, dan mengecek `/health`. Token tidak wajib.
 
 ## Dari mana datanya?
 Bridge memilih sumber otomatis (atur di `/etc/hermes-pixel-office.env`):
@@ -20,6 +31,7 @@ Bridge memilih sumber otomatis (atur di `/etc/hermes-pixel-office.env`):
 | Database sesi Hermes | `HERMES_DB=/home/USER/.hermes/state.db` | Paling mudah, tanpa API key. Dibuka read-only. |
 | API server Hermes | `HERMES_API_URL=http://127.0.0.1:8642` + `HERMES_API_KEY` | Perlu `API_SERVER_ENABLED=true` dan `API_SERVER_KEY` di `~/.hermes/.env`, lalu `hermes gateway`. |
 | agent-office | `AGENT_OFFICE_URL=http://127.0.0.1:8113` | Opsional. |
+| Hook plugin | otomatis setelah `python3 install.py` | Status waktu nyata (tool yang sedang dipakai, error, subagent). Ditumpuk di atas sumber lain. |
 
 Pemetaan: satu sesi Hermes = satu agent; `source` (cli, telegram, cron, ...) = divisi/lantai; sesi dengan aktivitas dalam 90 detik terakhir = "bekerja". Bisa diatur lewat `HERMES_ACTIVE_SECONDS`, `HERMES_RECENT_HOURS`, `HERMES_MAX_AGENTS`.
 
