@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.6.0
+- Animasi istirahat: agent yang sedang santai kadang berjalan ke sofa, kursi santai, atau bangku lalu duduk beberapa detik. Dipilih acak (sekitar 30% tiap istirahat) dan dijamin setiap istirahat ke-6. Kembali ke meja saat ada tugas.
+
 ## 1.5.0
 - Fitur chat dihapus (tombol Chat, panel, endpoint `/chat`, `chat_targets.json`, pengaturan endpoint chat).
 
