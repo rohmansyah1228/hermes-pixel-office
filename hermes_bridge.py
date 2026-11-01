@@ -22,7 +22,7 @@ import hashlib, hmac, html, json, os, secrets, sqlite3, threading, time, urllib.
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 HERE = Path(__file__).resolve().parent
 
 
@@ -30,9 +30,15 @@ def hermes_home():
     return Path(os.environ.get("HERMES_HOME") or "~/.hermes").expanduser()
 
 
+def root_home():
+    """~/.hermes (profil 'default'). Bila HERMES_HOME menunjuk ke profiles/<nama>, naik ke induknya."""
+    h = hermes_home()
+    return h.parent.parent if h.parent.name == "profiles" else h
+
+
 def _load_config():
     """Baca ~/.hermes/hermes-pixel-office/config.env (KEY=VALUE) tanpa menimpa env yang sudah ada."""
-    f = hermes_home() / "hermes-pixel-office" / "config.env"
+    f = root_home() / "hermes-pixel-office" / "config.env"
     try:
         for line in f.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -55,12 +61,14 @@ OPEN_CHAT = ENV("BRIDGE_OPEN_CHAT", "") == "1"
 API = ENV("HERMES_API_URL", "").strip().rstrip("/")
 API_KEY = ENV("HERMES_API_KEY", ENV("API_SERVER_KEY", "")).strip()
 DB = Path(os.path.expanduser(ENV("HERMES_DB", str(hermes_home() / "state.db"))))
-EVENTS = Path(os.path.expanduser(ENV("HERMES_EVENTS", str(hermes_home() / "hermes-pixel-office" / "events.jsonl"))))
+EVENTS = Path(os.path.expanduser(ENV("HERMES_EVENTS", str(root_home() / "hermes-pixel-office" / "events.jsonl"))))
 AO = ENV("AGENT_OFFICE_URL", "").strip().rstrip("/")
 CHAT_URL = ENV("CHAT_URL", "").strip()
 RECENT_H = float(ENV("HERMES_RECENT_HOURS", "12"))   # sesi yang ditampilkan: aktif dalam N jam terakhir
 ACTIVE_S = float(ENV("HERMES_ACTIVE_SECONDS", "90"))  # dianggap "bekerja" bila ada aktivitas dalam N detik
 MAX_AGENTS = int(ENV("HERMES_MAX_AGENTS", "40"))
+VIEW = ENV("HERMES_VIEW", "agents")  # agents = satu profil Hermes satu agent; sessions = satu sesi satu agent
+DIVISION_DEFAULT = ENV("HERMES_DIVISION", "Hermes")
 
 
 def source_mode():
@@ -205,6 +213,130 @@ def feed_from_ao():
     return json.loads(body)
 
 
+# ---------------------------------------------------------------- sumber: profil Hermes (agent sebenarnya)
+def list_profiles():
+    root = root_home()
+    out = [("default", root)]
+    d = root / "profiles"
+    if d.is_dir():
+        out += [(p.name, p) for p in sorted(d.iterdir()) if p.is_dir() and not p.name.startswith(".")]
+    return out
+
+
+def division_map():
+    try:
+        return json.loads((root_home() / "hermes-pixel-office" / "divisions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def soul_role(home):
+    try:
+        for line in (home / "SOUL.md").read_text(encoding="utf-8").splitlines():
+            line = line.strip().lstrip("#").strip()
+            if line:
+                return short(line, 40)
+    except OSError:
+        pass
+    return ""
+
+
+def profile_snapshot(name, home):
+    """Satu profil = satu agent. Baca state.db profil itu (read-only)."""
+    dbp = home / "state.db"
+    info = {"model": "", "tin": None, "tout": None, "cost": None, "tools": None, "last": None, "text": "", "tool": "",
+            "title": "", "open": False, "sessions": 0}
+    if dbp.exists():
+        con = sqlite3.connect(f"file:{dbp}?mode=ro", uri=True, timeout=3)
+        con.row_factory = sqlite3.Row
+        try:
+            names = [r[0] for r in con.execute("select name from sqlite_master")]
+            sc = cols(con, "sessions") if "sessions" in names else []
+            mc = cols(con, "messages") if "messages" in names else []
+            if sc:
+                info["sessions"] = con.execute("select count(*) from sessions").fetchone()[0]
+
+                def total(*cands):
+                    for c in cands:
+                        if c in sc:
+                            return con.execute(f'select sum("{c}") from sessions').fetchone()[0]
+                info["tin"] = total("input_tokens", "prompt_tokens")
+                info["tout"] = total("output_tokens", "completion_tokens")
+                info["cost"] = total("actual_cost_usd", "estimated_cost_usd", "cost_usd", "cost")
+                order = "started_at" if "started_at" in sc else "rowid"
+                s = con.execute(f"select * from sessions order by {order} desc limit 1").fetchone()
+                if s:
+                    s = dict(s)
+                    info["model"] = str(s.get("model") or "")
+                    info["title"] = str(s.get("title") or "")
+                    info["open"] = not s.get("ended_at")
+                    info["last"] = ts(s.get("ended_at") or s.get("started_at"))
+            mts = next((c for c in ("timestamp", "created_at", "ts") if c in mc), None)
+            if mc and mts:
+                rows = [dict(r) for r in con.execute(f"select * from messages order by {mts} desc limit 12")]
+                if rows:
+                    info["last"] = max(filter(None, [info["last"], ts(rows[0][mts])]), default=info["last"])
+                    for r in rows:
+                        if not info["tool"] and r.get("tool_name"):
+                            info["tool"] = str(r["tool_name"])
+                        if not info["text"] and r.get("role") in ("assistant", "user") and r.get("content"):
+                            info["text"] = str(r["content"])
+                if "tool_name" in mc:
+                    info["tools"] = con.execute("select count(*) from messages where tool_name is not null").fetchone()[0]
+        finally:
+            con.close()
+    return info
+
+
+def feed_from_profiles(ev):
+    now, dmap, out = time.time(), division_map(), []
+    for name, home in list_profiles():
+        if name == "default" and not (home / "state.db").exists() and not (home / "config.yaml").exists():
+            continue
+        try:
+            i = profile_snapshot(name, home)
+        except Exception:
+            i = {"model": "", "tin": None, "tout": None, "cost": None, "tools": None, "last": None, "text": "", "tool": "",
+                 "title": "", "open": False, "sessions": 0}
+        e = [a for a in ev.values() if a.get("profile") == name]
+        live = [a for a in e if not a.get("sub") and a["state"] in ("working", "error")]
+        state = "idle"
+        if i["last"] and now - i["last"] <= ACTIVE_S and i["open"]:
+            state = "working"
+        task, tool = (short(i["text"]) if state == "working" else ""), (i["tool"] if state == "working" else "")
+        if live:
+            top = max(live, key=lambda a: a["last"])
+            state, tool, task = top["state"], top["tool"] or tool, top["task"] or task
+        out.append({"id": "profile:" + name, "name": "Hermes" if name == "default" else name,
+                    "division": str(dmap.get(name) or DIVISION_DEFAULT),
+                    "role": soul_role(home) or i["model"] or "Agent", "platform": "profile", "state": state, "tool": tool,
+                    "task": task or (("Sesi terakhir: " + short(i["title"], 50)) if state != "idle" and i["title"] else ""),
+                    "metrics": {"input_tokens": i["tin"], "output_tokens": i["tout"], "tool_calls": i["tools"], "cost_usd": i["cost"]}})
+    # subagent (delegate_task) yang sedang jalan -> agent tambahan di divisi induknya
+    parent_div = {a["name"]: a["division"] for a in out}
+    for a in ev.values():
+        if a.get("sub") and not a["ended"] and now - a["last"] <= 600:
+            div = parent_div.get("Hermes" if a.get("profile") == "default" else a.get("profile"), DIVISION_DEFAULT)
+            out.append({"id": a["id"], "name": a["name"] or "Subagent", "division": div, "role": "Subagent", "platform": "subagent",
+                        "state": a["state"], "tool": a["tool"], "task": a["task"], "metrics": {"tool_calls": a["tools"]}})
+    return {"agents": out[:MAX_AGENTS], "source": "profiles"}
+
+
+def diag():
+    print("root_home :", root_home())
+    print("view      :", VIEW)
+    for name, home in list_profiles():
+        db = home / "state.db"
+        print(f"- profil {name}: {home}  state.db={'ada' if db.exists() else 'TIDAK ADA'}  SOUL.md={'ada' if (home / 'SOUL.md').exists() else '-'}")
+        if db.exists():
+            try:
+                i = profile_snapshot(name, home)
+                print(f"    sesi={i['sessions']} token_in={i['tin']} token_out={i['tout']} biaya={i['cost']} terakhir={i['last']} model={i['model']!r}")
+            except Exception as exc:
+                print("    gagal baca:", type(exc).__name__, exc)
+    print("events    :", EVENTS, "ada" if EVENTS.exists() else "belum ada")
+
+
 # ---------------------------------------------------------------- sumber: hook plugin (waktu nyata)
 def read_events():
     """Gabungkan events.jsonl (ditulis plugin Hermes) menjadi status per sesi."""
@@ -219,7 +351,7 @@ def read_events():
     def get(sid, e):
         return ag.setdefault(sid, {"id": sid, "platform": e.get("platform") or "hermes", "role": "Hermes", "name": None,
                                    "state": "idle", "tool": "", "task": "", "tools": 0, "last": e.get("t") or 0,
-                                   "ended": False, "open": 0, "err": False})
+                                   "ended": False, "open": 0, "err": False, "profile": e.get("profile"), "sub": False})
 
     for line in raw.splitlines()[-4000:]:
         try:
@@ -233,7 +365,7 @@ def read_events():
                 continue
             parent = ag.get(str(e.get("parent_session_id") or ""))
             a = get(sid, {"t": t, "platform": parent["platform"] if parent else "hermes"})
-            a.update(role=str(e.get("child_role") or "Subagent"), name=short(e.get("child_role") or "Subagent", 24),
+            a.update(sub=True, profile=(parent["profile"] if parent else e.get("profile")), role=str(e.get("child_role") or "Subagent"), name=short(e.get("child_role") or "Subagent", 24),
                      task=short(e.get("child_goal"), 90), state="working", last=t, ended=False)
             continue
         sid = str(e.get("session_id") or e.get("child_session_id") or "")
@@ -243,6 +375,8 @@ def read_events():
         a["last"] = t
         if e.get("platform"):
             a["platform"] = e["platform"]
+        if e.get("profile"):
+            a["profile"] = e["profile"]
         if ev == "session_start":
             a.update(ended=False, state="idle", open=0, err=False)
         elif ev in ("session_end", "subagent_stop"):
@@ -311,6 +445,8 @@ def get_feed():
         ev = read_events()
     except Exception:
         pass
+    if VIEW == "agents" and any((h / "state.db").exists() or (h / "config.yaml").exists() for _, h in list_profiles()):
+        return feed_from_profiles(ev)
     try:
         base = get_base_feed()
     except Exception:
@@ -554,7 +690,7 @@ def cli_set_password(write=True):
     if not write:
         print(line)
         return
-    f = hermes_home() / "hermes-pixel-office" / "config.env"
+    f = root_home() / "hermes-pixel-office" / "config.env"
     f.parent.mkdir(parents=True, exist_ok=True)
     keep = [l for l in (f.read_text(encoding="utf-8").splitlines() if f.exists() else [])
             if not l.startswith(("BRIDGE_PASSWORD", "#BRIDGE_PASSWORD"))]
@@ -567,6 +703,8 @@ if __name__ == "__main__":
     import sys
     if "--set-password" in sys.argv:
         raise SystemExit(cli_set_password())
+    if "--diag" in sys.argv:
+        raise SystemExit(diag())
     if "--hash" in sys.argv:
         raise SystemExit(cli_set_password(write=False))
     print(f"Hermes Pixel Office {VERSION}  http://{HOST}:{PORT}/")

@@ -25,17 +25,30 @@ sudo ./install.sh
 ```
 Skrip ini membuat `/etc/hermes-pixel-office.env`, memasang layanan systemd, dan mengecek `/health`. Password ditanyakan saat install (opsional).
 
-## Dari mana datanya?
-Bridge memilih sumber otomatis (atur di `/etc/hermes-pixel-office.env`):
+## Apa yang dianggap "agent"?
+Satu **profil Hermes** = satu agent (`~/.hermes` = agent `Hermes`, lalu tiap `~/.hermes/profiles/<nama>/`). Data tiap agent dibaca dari `state.db` profil itu: token, biaya, jumlah tool, dan aktivitas terakhir. Agent tampil "bekerja" bila ada aktivitas dalam 90 detik terakhir (atau hook plugin melaporkan tool yang sedang berjalan). Subagent (`delegate_task`) yang sedang jalan muncul sebagai agent tambahan.
+
+**Divisi** (lantai) belum ada di Hermes, jadi semua agent masuk divisi `Hermes`. Untuk membaginya, buat `~/.hermes/hermes-pixel-office/divisions.json`:
+```json
+{"coder": "Engineering", "writer": "Konten", "default": "Operasional"}
+```
+Perubahan terbaca otomatis tanpa restart. Satu lantai memuat maksimal 8 agent.
+
+Cek apa yang terdeteksi di server: `python3 hermes_bridge.py --diag`.
+
+Kalau ingin tampilan lama (satu sesi = satu agent), isi `HERMES_VIEW=sessions` di `config.env`.
+
+Bila Anda memakai beberapa profil, pasang plugin di tiap profil (`HERMES_HOME=~/.hermes/profiles/<nama> python3 install.py`) atau jalankan satu server sendiri (`sudo ./install.sh`). Data tetap dibaca dari semua profil.
+
+## Sumber data lain
+Kalau tidak ada folder Hermes lokal, bridge memakai sumber di bawah ini:
 
 | Sumber | Pengaturan | Catatan |
 |---|---|---|
-| Database sesi Hermes | `HERMES_DB=/home/USER/.hermes/state.db` | Paling mudah, tanpa API key. Dibuka read-only. |
+| Database sesi Hermes | `HERMES_DB=/home/USER/.hermes/state.db` | Satu sesi = satu agent. |
 | API server Hermes | `HERMES_API_URL=http://127.0.0.1:8642` + `HERMES_API_KEY` | Perlu `API_SERVER_ENABLED=true` dan `API_SERVER_KEY` di `~/.hermes/.env`, lalu `hermes gateway`. |
 | agent-office | `AGENT_OFFICE_URL=http://127.0.0.1:8113` | Opsional. |
-| Hook plugin | otomatis setelah `python3 install.py` | Status waktu nyata (tool yang sedang dipakai, error, subagent). Ditumpuk di atas sumber lain. |
-
-Pemetaan: satu sesi Hermes = satu agent; `source` (cli, telegram, cron, ...) = divisi/lantai; sesi dengan aktivitas dalam 90 detik terakhir = "bekerja". Bisa diatur lewat `HERMES_ACTIVE_SECONDS`, `HERMES_RECENT_HOURS`, `HERMES_MAX_AGENTS`.
+| Hook plugin | otomatis setelah `python3 install.py` | Status waktu nyata (tool yang sedang dipakai, error, subagent). |
 
 ## Chat
 Butuh `HERMES_API_URL` dan `HERMES_API_KEY` (API server Hermes). Pesan dikirim ke `/v1/chat/completions`; kunci tidak pernah sampai ke browser. Tanpa password, chat **mati** secara bawaan supaya orang lain tidak bisa memberi instruksi ke agent Anda. Aktifkan dengan `BRIDGE_OPEN_CHAT=1` hanya bila akses sudah dibatasi (Cloudflare Access atau Tailscale).

@@ -23,8 +23,18 @@ def _home() -> Path:
     return Path(os.environ.get("HERMES_HOME") or "~/.hermes").expanduser()
 
 
+def _root() -> Path:
+    h = _home()
+    return h.parent.parent if h.parent.name == "profiles" else h
+
+
+def _profile() -> str:
+    h = _home()
+    return h.name if h.parent.name == "profiles" else "default"
+
+
 def _events_path() -> Path:
-    return Path(os.environ.get("HERMES_EVENTS") or _home() / "hermes-pixel-office" / "events.jsonl")
+    return Path(os.environ.get("HERMES_EVENTS") or _root() / "hermes-pixel-office" / "events.jsonl")
 
 
 def _publish(ev: dict) -> None:
@@ -32,6 +42,7 @@ def _publish(ev: dict) -> None:
         p = _events_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         ev["t"] = time.time()
+        ev["profile"] = _profile()
         line = json.dumps(ev, ensure_ascii=False) + "\n"
         with _lock:
             if p.exists() and p.stat().st_size > MAX_BYTES:
