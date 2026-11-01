@@ -32,7 +32,7 @@ Satu **profil Hermes** = satu agent (`~/.hermes` = agent `Hermes`, lalu tiap `~/
 ```json
 {"coder": "Engineering", "writer": "Konten", "default": "Operasional"}
 ```
-Perubahan terbaca otomatis tanpa restart. Satu lantai memuat maksimal 8 agent.
+Isi `"hidden"` untuk menyembunyikan profil (mis. `"default": "hidden"`). Contoh lengkap: `deploy/divisions.example.json`, disalin otomatis oleh `install.py` bila belum ada. Perubahan terbaca otomatis tanpa restart. Satu lantai memuat maksimal 8 agent.
 
 Cek apa yang terdeteksi di server: `python3 hermes_bridge.py --diag`.
 

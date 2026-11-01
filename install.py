@@ -71,6 +71,11 @@ def main(argv=()) -> int:
     elif args.port:
         lines = [l for l in cfg.read_text(encoding="utf-8").splitlines() if not l.startswith("BRIDGE_PORT=")]
         cfg.write_text("\n".join(lines + [f"BRIDGE_PORT={args.port}"]) + "\n", encoding="utf-8")
+    div = home / NAME / "divisions.json"
+    ex = HERE / "deploy" / "divisions.example.json"
+    if not div.exists() and ex.is_file():
+        shutil.copy2(ex, div)
+        print("divisi   :", div, "(ubah sesuai profil Anda; 'hidden' menyembunyikan profil)")
     try:
         r = subprocess.run(["hermes", "plugins", "enable", NAME], capture_output=True, text=True, timeout=30)
         print("enable   :", "plugin diaktifkan" if r.returncode == 0 else f"gagal ({(r.stderr or r.stdout).strip()[:120]})")

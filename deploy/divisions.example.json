@@ -1,0 +1,17 @@
+{
+  "content-manager": "Content Team",
+  "news-copywriter": "Content Team",
+  "creative-designer": "Content Team",
+  "legal-fact-checker": "Content Team",
+  "social-media-strategist": "Content Team",
+  "project-manager": "Software Engineering",
+  "ui-ux-designer": "Software Engineering",
+  "frontend-developer": "Software Engineering",
+  "backend-developer": "Software Engineering",
+  "qa-security-tester": "Software Engineering",
+  "data-analyst": "Data Analysis & Government Reporting",
+  "government-report-writer": "Data Analysis & Government Reporting",
+  "data-quality-reviewer": "Data Analysis & Government Reporting",
+  "report-document-editor": "Data Analysis & Government Reporting",
+  "default": "hidden"
+}

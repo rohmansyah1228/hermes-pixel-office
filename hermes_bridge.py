@@ -298,6 +298,8 @@ def feed_from_profiles(ev):
         except Exception:
             i = {"model": "", "tin": None, "tout": None, "cost": None, "tools": None, "last": None, "text": "", "tool": "",
                  "title": "", "open": False, "sessions": 0}
+        if name in dmap and dmap[name] in (None, False, "", "-", "hidden"):
+            continue  # profil disembunyikan lewat divisions.json
         e = [a for a in ev.values() if a.get("profile") == name]
         live = [a for a in e if not a.get("sub") and a["state"] in ("working", "error")]
         state = "idle"
