@@ -50,6 +50,14 @@ Kalau tidak ada folder Hermes lokal, bridge memakai sumber di bawah ini:
 | agent-office | `AGENT_OFFICE_URL=http://127.0.0.1:8113` | Opsional. |
 | Hook plugin | otomatis setelah `python3 install.py` | Status waktu nyata (tool yang sedang dipakai, error, subagent). |
 
+## Kelola divisi dan agent dari halaman
+Buka panel **Kelola divisi dan agent** di sisi kanan:
+- **Divisi:** tambah, ganti nama, ubah urutan lantai, dan hapus. Saat menghapus divisi yang berisi agent, pilih divisi tujuan untuk agent-nya.
+- **Agent:** klik agent lalu tombol **Atur** untuk mengganti nama, peran, dan memindahkannya ke divisi lain (atau divisi baru). Agent bisa disembunyikan dari kantor dan ditampilkan lagi dari panel yang sama. **Tambah agent** membuat agent manual (hanya penanda, selalu istirahat); agent Hermes yang asli tetap muncul otomatis dari profilnya.
+- Agent Hermes tidak dihapus dari Hermes; "hapus" hanya menyembunyikannya dari kantor.
+
+Pengaturan disimpan di server (`~/.hermes/hermes-pixel-office/layout.json`) sehingga sama di semua perangkat. Menyimpan ke server butuh password (`python3 install.py --set-password`), atau akses dari komputer server itu sendiri; di luar itu pengaturan hanya tersimpan di browser. `BRIDGE_ALLOW_EDIT=1` mengizinkan edit tanpa password (tidak disarankan untuk domain publik).
+
 ## Chat
 Butuh `HERMES_API_URL` dan `HERMES_API_KEY` (API server Hermes). Pesan dikirim ke `/v1/chat/completions`; kunci tidak pernah sampai ke browser. Tanpa password, chat **mati** secara bawaan supaya orang lain tidak bisa memberi instruksi ke agent Anda. Aktifkan dengan `BRIDGE_OPEN_CHAT=1` hanya bila akses sudah dibatasi (Cloudflare Access atau Tailscale).
 

@@ -22,7 +22,7 @@ import hashlib, hmac, html, json, os, secrets, sqlite3, threading, time, urllib.
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 HERE = Path(__file__).resolve().parent
 
 
@@ -69,6 +69,8 @@ ACTIVE_S = float(ENV("HERMES_ACTIVE_SECONDS", "90"))  # dianggap "bekerja" bila 
 MAX_AGENTS = int(ENV("HERMES_MAX_AGENTS", "40"))
 VIEW = ENV("HERMES_VIEW", "agents")  # agents = satu profil Hermes satu agent; sessions = satu sesi satu agent
 DIVISION_DEFAULT = ENV("HERMES_DIVISION", "Hermes")
+ALLOW_EDIT = ENV("BRIDGE_ALLOW_EDIT", "") == "1"
+LAYOUT = root_home() / "hermes-pixel-office" / "layout.json"
 
 
 def source_mode():
@@ -504,6 +506,48 @@ def do_chat(body):
 
 
 # ---------------------------------------------------------------- HTTP
+# ---------------------------------------------------------------- tata letak (divisi/agent yang diatur dari halaman)
+def _s(v, n=60):
+    return str(v).strip()[:n] if isinstance(v, (str, int, float)) and not isinstance(v, bool) else ""
+
+
+def clean_layout(o):
+    if not isinstance(o, dict):
+        raise ValueError("bukan objek")
+    out = {"divs": [], "added": [], "ren": {}, "ag": {}, "extra": []}
+    for k in ("divs", "added"):
+        out[k] = [s for s in (_s(x, 40) for x in (o.get(k) or [])[:40]) if s]
+    for k, v in list((o.get("ren") or {}).items())[:80]:
+        if _s(k, 40) and _s(v, 40):
+            out["ren"][_s(k, 40)] = _s(v, 40)
+    for k, v in list((o.get("ag") or {}).items())[:300]:
+        if not isinstance(v, dict) or not _s(k, 120):
+            continue
+        item = {f: _s(v.get(f), 40) for f in ("name", "role", "div") if _s(v.get(f), 40)}
+        if v.get("hide") is True:
+            item["hide"] = True
+        out["ag"][_s(k, 120)] = item
+    for x in (o.get("extra") or [])[:120]:
+        if isinstance(x, dict) and _s(x.get("id"), 120) and _s(x.get("name"), 40):
+            out["extra"].append({"id": _s(x["id"], 120), "name": _s(x["name"], 40), "role": _s(x.get("role"), 40) or "Agent",
+                                 "div": _s(x.get("div"), 40) or "Hermes"})
+    return out
+
+
+def read_layout():
+    try:
+        return clean_layout(json.loads(LAYOUT.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return {}
+
+
+def write_layout(o):
+    LAYOUT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = LAYOUT.with_suffix(".tmp")
+    tmp.write_text(json.dumps(o, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, LAYOUT)
+
+
 # ---------------------------------------------------------------- password + sesi
 def hash_password(pw, iters=200000):
     salt = secrets.token_hex(16)
@@ -606,6 +650,15 @@ class Handler(BaseHTTPRequestHandler):
         return "; Secure" if (self.headers.get("X-Forwarded-Proto", "").lower() == "https"
                               or self.headers.get("CF-Visitor", "").find("https") >= 0) else ""
 
+    def can_edit(self):
+        """Edit tata letak: wajib login bila password aktif; tanpa password hanya dari komputer lokal (atau BRIDGE_ALLOW_EDIT=1)."""
+        if AUTH_ON:
+            return self.authed()
+        if ALLOW_EDIT:
+            return True
+        proxied = self.headers.get("CF-Connecting-IP") or self.headers.get("X-Forwarded-For")
+        return self.client_address[0] in ("127.0.0.1", "::1") and not proxied
+
     def login_page(self, err="", code=200):
         body = LOGIN_HTML.replace("__ERR__", f'<p class="e">{html.escape(err)}</p>' if err else "")
         self.send(code, body.encode(), "text/html; charset=utf-8")
@@ -615,7 +668,7 @@ class Handler(BaseHTTPRequestHandler):
         route = u.path
         if route in ("/health", "/healthz"):
             return self.send(200, {"ok": True, "app": "hermes-pixel-office", "version": VERSION,
-                                   "source": source_mode(), "chat": bool(CHAT_URL or API) and (AUTH_ON or OPEN_CHAT), "auth": AUTH_ON})
+                                   "source": source_mode(), "chat": bool(CHAT_URL or API) and (AUTH_ON or OPEN_CHAT), "auth": AUTH_ON, "edit": AUTH_ON or ALLOW_EDIT})
         if AUTH_ON and route == "/login":
             return self.login_page() if not self.authed() else self.send(302, b"", "text/plain", {"Location": "/"})
         if not self.authed():
@@ -624,6 +677,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(401, {"error": "sesi habis, login lagi"})
         if route in ("/", "/index.html"):
             return self.send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
+        if route == "/layout":
+            return self.send(200, read_layout())
         if route == "/feed":
             try:
                 return self.send(200, get_feed())
@@ -657,6 +712,17 @@ class Handler(BaseHTTPRequestHandler):
         if AUTH_ON and route == "/logout":
             end_session(self.cookie_tok())
             return self.send(200, {"ok": True}, extra={"Set-Cookie": "hps=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"})
+        if route == "/layout":
+            if not self.can_edit():
+                return self.send(403, {"error": "edit tidak diizinkan: pasang password (python3 install.py --set-password)"})
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                if not 0 < n <= 65536:
+                    raise ValueError
+                write_layout(clean_layout(json.loads(self.rfile.read(n))))
+            except (ValueError, OSError) as exc:
+                return self.send(400, {"error": "layout tidak valid", "detail": str(exc)[:100]})
+            return self.send(200, {"ok": True})
         if route != "/chat":
             return self.send(404, b"not found", "text/plain")
         if not AUTH_ON and not OPEN_CHAT:

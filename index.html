@@ -86,6 +86,14 @@ legend{font:400 8px var(--pix);color:var(--acc);padding:0 4px}
 .cm.sys{background:transparent;border:2px dashed var(--line);color:var(--mute);justify-self:center}
 .ch-f{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end}
 .ch-f textarea{resize:none}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;align-items:center;border:2px solid var(--line);background:var(--panel2);padding:5px 6px}
+.mrow .nm{display:flex;gap:4px;min-width:0}.mrow .nm input{min-width:0}
+.mrow .bt{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end}
+.mrow .sub{grid-column:1/-1;display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.mgr{display:grid;gap:8px}.mgr h4{margin:6px 0 0;font:400 8px/1.6 var(--pix);color:var(--acc);text-transform:uppercase}
+.mgr .add{display:grid;gap:5px}.mgr .msg{color:var(--acc);font-size:15px}
+.sm.arm{background:#a33;color:#fff}
+.ed{display:grid;gap:7px}.ed label{display:grid;gap:2px;font-size:16px;color:var(--mute)}
 @media (min-width:1100px){
  .app{height:100dvh;grid-template-rows:auto minmax(0,1fr);padding:10px 14px}
  .layout{grid-template-columns:132px minmax(0,1fr) clamp(260px,23vw,340px);height:100%;min-height:0}
@@ -143,6 +151,7 @@ legend{font:400 8px var(--pix);color:var(--acc);padding:0 4px}
 <label class="ck"><input type="checkbox" id="ghRem"> Ingat token di perangkat ini</label>
 <label class="ck"><input type="checkbox" id="ghAuto"> Upload otomatis saat agent selesai</label>
 </fieldset></div></details>
+<details class="pn" id="mgr"><summary>Kelola divisi dan agent</summary><div id="mgrBody" class="mgr"></div></details>
 <details class="pn" id="logbox" open><summary>Log aktivitas</summary><div id="log" aria-live="polite"></div></details>
 <section class="pn legend"><div class="lg"><span><i class="dot" style="background:#4cc46a"></i>Bekerja</span><span><i class="dot" style="background:#e8c14a"></i>Berpikir</span><span><i class="dot" style="background:#e0524f"></i>Error</span><span><i class="dot" style="background:#8aa0b8"></i>Istirahat</span></div><small>Klik agent untuk detail. Pintasan: T tema, N suasana, L label, C chat, Esc tutup.</small></section>
 <small class="credit">Peta, tileset, karakter, dan emote dari proyek hermes-town (aset Modern Interiors / Modern Office, lisensi milik pemilik proyek).</small>
@@ -311,12 +320,14 @@ function applyAgent(a,n){
  a.state=n.state;a.task=n.state==='idle'?'':(n.task||a.task);
 }
 function sync(list){
+ LAST=list;list=layApply(list);
  const byId=new Map();D.forEach(d=>d.agents.forEach(a=>byId.set(a.id,a)));
  const groups=new Map();list.forEach(n=>{if(!groups.has(n.division))groups.set(n.division,[]);groups.get(n.division).push(n)});
+ LAY.added.forEach(n=>{if(!groups.has(n))groups.set(n,[])});
  const nd=[];
- groups.forEach((arr,name)=>{for(let k=0;k<arr.length;k+=CAP){const part=arr.slice(k,k+CAP);
-  nd.push({name:k?name+' '+(k/CAP+1):name,agents:part.map((n,i)=>{let a=byId.get(n.id);if(!a)a=mk(n.id,n.name,n.role,SH(n.id,i===0&&!k));a.name=n.name;a.role=n.role;applyAgent(a,n);return a})})}});
- const order=D.map(d=>d.name);nd.sort((p,q)=>{const i=order.indexOf(p.name),j=order.indexOf(q.name);return(i<0?99:i)-(j<0?99:j)});
+ groups.forEach((arr,name)=>{for(let k=0;k<Math.max(arr.length,1);k+=CAP){const part=arr.slice(k,k+CAP);
+  nd.push({name:k?name+' '+(k/CAP+1):name,base:name,agents:part.map((n,i)=>{let a=byId.get(n.id);if(!a)a=mk(n.id,n.name,n.role,SH(n.id,i===0&&!k));a.name=n.name;a.role=n.role;applyAgent(a,n);return a})})}});
+ const order=D.map(d=>d.name),lo=LAY.divs;nd.sort((p,q)=>{const a=lo.indexOf(p.base),b=lo.indexOf(q.base);if(a>=0||b>=0)return(a<0?999:a)-(b<0?999:b)||(p.name<q.name?-1:1);const i=order.indexOf(p.name),j=order.indexOf(q.name);return(i<0?99:i)-(j<0?99:j)});
  D=nd.slice(0,10);if(SEL&&!selAgent())SEL=null;layout();ui();
 }
 const TASKS=['Membaca dokumen','Menjalankan tes','Mencari referensi','Menyusun laporan','Memanggil tool'],TOOLS=['read_file','run_tests','web_search','write_file','terminal'];
@@ -345,6 +356,97 @@ function status(){const n=D.reduce((s,d)=>s+d.agents.length,0);
 window.hermes={update:(n,s,t,dv)=>{stopAll();MODE='push';const list=D.flatMap(d=>d.agents.map(a=>({id:a.id,name:a.name,division:d.name,role:a.role,platform:a.platform,state:a.state,task:a.task,tool:a.tool,m:{},result:null})));
  const i=list.findIndex(x=>x.name.toLowerCase()===String(n).toLowerCase());if(i>=0){list[i].state=stOf(s);if(t!==undefined)list[i].task=t}else if(dv)list.push({id:dv+'/'+n,name:n,division:dv,role:'Agent',platform:'',state:stOf(s),task:t||'',tool:'',m:{},result:null});else return;sync(list)},sync:j=>{stopAll();MODE='push';sync(normFeed(j))}};
 addEventListener('message',e=>{const x=e.data;if(x&&x.name)window.hermes.update(x.name,x.state,x.task,x.division)});
+// ---------- kelola divisi dan agent ----------
+let LAY={divs:[],added:[],ren:{},ag:{},extra:[]},BR=null,LAST=[],EDIT=null,layMsg='',mgrSig='';
+const layNorm=o=>{o=o&&typeof o==='object'?o:{};const A=x=>Array.isArray(x)?x.filter(v=>typeof v==='string'):[];const O=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
+ return{divs:A(o.divs),added:A(o.added),ren:O(o.ren),ag:O(o.ag),extra:(Array.isArray(o.extra)?o.extra:[]).filter(x=>x&&x.id&&x.name)}};
+try{LAY=layNorm(JSON.parse(localStorage.getItem('hpo-layout')||'{}'))}catch(e){}
+function layApply(list){
+ const out=[];
+ list.forEach(n=>{const o=LAY.ag[n.id]||{};if(o.hide)return;
+  out.push({...n,name:o.name||n.name,role:o.role||n.role,division:o.div||LAY.ren[n.division]||n.division})});
+ LAY.extra.forEach(x=>{const o=LAY.ag[x.id]||{};if(o.hide||out.some(n=>n.id===x.id))return;
+  out.push({id:x.id,name:o.name||x.name,role:o.role||x.role||'Agent',division:o.div||x.div||'Hermes',platform:'manual',state:'idle',task:'',tool:'',m:{},result:null})});
+ return out}
+const divNames=()=>[...new Set(D.map(d=>d.base||d.name))];
+async function laySave(msg){
+ try{localStorage.setItem('hpo-layout',JSON.stringify(LAY))}catch(e){}
+ layMsg=msg||'';
+ if(BR){try{const r=await fetch('/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(LAY)});
+   if(r.status===401){location.reload();return}
+   if(r.status===403)layMsg='Tersimpan hanya di browser ini. Untuk menyimpan di server, pasang password: python3 install.py --set-password';
+   else if(!r.ok)layMsg='Gagal menyimpan ke server (HTTP '+r.status+')';
+   else layMsg=(msg||'Tersimpan')+' (di server)'}catch(e){layMsg='Server tidak terjangkau; tersimpan di browser ini'}}
+ else layMsg=(msg||'Tersimpan')+' (di browser ini)';
+ sync(LAST);mgrSig='';renderMgr(true)}
+function layBoot(){
+ if(!/^https?:$/.test(location.protocol)||/github\.io$|claude\.(ai|com)$|usercontent/.test(location.hostname))return;
+ fetch('/health',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(h=>{if(!h||h.app!=='hermes-pixel-office')return;BR=h;
+  return fetch('/layout',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{if(j){LAY=layNorm(j);sync(LAST);mgrSig='';renderMgr(true)}})}).catch(()=>{})}
+function setDivName(oldN,newN){const sw=a=>a.map(v=>v===oldN?newN:v);
+ LAY.divs=sw(LAY.divs);LAY.added=sw(LAY.added);
+ Object.keys(LAY.ren).forEach(k=>{if(LAY.ren[k]===oldN)LAY.ren[k]=newN});LAY.ren[oldN]=newN;
+ Object.values(LAY.ag).forEach(o=>{if(o.div===oldN)o.div=newN});LAY.extra.forEach(x=>{if(x.div===oldN)x.div=newN})}
+function mergeDiv(from,to){const rm=a=>a.filter(v=>v!==from);
+ LAY.divs=rm(LAY.divs);LAY.added=rm(LAY.added);
+ Object.keys(LAY.ren).forEach(k=>{if(LAY.ren[k]===from)LAY.ren[k]=to});LAY.ren[from]=to;
+ Object.values(LAY.ag).forEach(o=>{if(o.div===from)o.div=to});LAY.extra.forEach(x=>{if(x.div===from)x.div=to})}
+function mgrHtml(){
+ const names=divNames(),hid=Object.keys(LAY.ag).filter(id=>LAY.ag[id].hide&&!LAY.extra.some(x=>x.id===id));
+ const rows=names.map((n,i)=>{const d=D.find(x=>x.base===n)||{agents:[]},cnt=D.filter(x=>x.base===n).reduce((s,x)=>s+x.agents.length,0),others=names.filter(v=>v!==n);
+  return`<div class="mrow"><div class="nm"><input value="${esc(n)}" data-d="${esc(n)}" aria-label="Nama divisi" maxlength="40"><button class="sm" data-m="ren" data-d="${esc(n)}">Ubah</button></div>
+<div class="bt"><button class="sm" data-m="up" data-d="${esc(n)}" ${i?'':'disabled'} aria-label="Naik">&uarr;</button><button class="sm" data-m="down" data-d="${esc(n)}" ${i<names.length-1?'':'disabled'} aria-label="Turun">&darr;</button></div>
+<div class="sub"><small>${cnt} agent</small>${cnt&&others.length?`<small>agent pindah ke</small><select data-to="${esc(n)}" aria-label="Pindahkan agent ke">${others.map(o=>`<option>${esc(o)}</option>`).join('')}</select>`:''}<button class="sm" data-m="del" data-d="${esc(n)}" ${cnt&&!others.length?'disabled':''}>Hapus divisi</button></div></div>`}).join('');
+ const opt=names.map(n=>`<option>${esc(n)}</option>`).join('');
+ return`${layMsg?`<div class="msg">${esc(layMsg)}</div>`:''}<h4>Divisi (lantai)</h4>${rows||'<small>Belum ada divisi.</small>'}
+<div class="add"><input id="newDiv" placeholder="Nama divisi baru" maxlength="40"><button class="sm" data-m="adddiv">Tambah divisi</button></div>
+<h4>Tambah agent</h4><div class="add"><input id="newAgName" placeholder="Nama agent" maxlength="40"><input id="newAgRole" placeholder="Peran (opsional)" maxlength="40"><select id="newAgDiv" aria-label="Divisi agent">${opt||'<option>Hermes</option>'}</select><button class="sm" data-m="addag">Tambah agent</button>
+<small>Agent manual hanya penanda (selalu istirahat). Agent Hermes yang asli muncul otomatis.</small></div>
+${hid.length?`<h4>Disembunyikan</h4>${hid.map(id=>`<div class="mrow"><span>${esc(LAY.ag[id].name||id.replace(/^profile:/,''))}</span><div class="bt"><button class="sm" data-m="unhide" data-id="${esc(id)}">Tampilkan</button></div></div>`).join('')}`:''}
+<h4>Lainnya</h4><button class="sm" data-m="resetall">Kembalikan semua ke bawaan</button>`}
+function renderMgr(force){
+ const el=$('mgrBody');if(!el)return;
+ const sig=JSON.stringify([divNames(),D.map(d=>d.agents.length),LAY,layMsg]);
+ if(!force&&(sig===mgrSig||el.contains(document.activeElement)&&/INPUT|SELECT/.test(document.activeElement.tagName)))return;
+ mgrSig=sig;el.innerHTML=mgrHtml()}
+let armed=null;
+document.getElementById('mgrBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!b.dataset.m)return;const m=b.dataset.m,d=b.dataset.d,box=$('mgrBody');
+ const val=id=>(box.querySelector('#'+id)||{}).value||'';
+ if(m==='adddiv'){const n=val('newDiv').trim();if(!n)return;if(divNames().includes(n)){layMsg='Divisi sudah ada';renderMgr(true);return}
+  LAY.added.push(n);LAY.divs=[...divNames(),n];laySave('Divisi ditambah')}
+ else if(m==='ren'){const inp=box.querySelector(`input[data-d="${CSS.escape(d)}"]`),n=(inp&&inp.value||'').trim();if(!n||n===d)return;if(divNames().includes(n)){layMsg='Nama sudah dipakai';renderMgr(true);return}
+  LAY.divs=divNames();setDivName(d,n);laySave('Divisi diganti nama')}
+ else if(m==='up'||m==='down'){const a=divNames(),i=a.indexOf(d),j=m==='up'?i-1:i+1;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];LAY.divs=a;laySave('Urutan lantai diubah')}
+ else if(m==='del'){if(armed!==d){armed=d;b.textContent='Yakin?';b.classList.add('arm');setTimeout(()=>{if(armed===d){armed=null;b.textContent='Hapus divisi';b.classList.remove('arm')}},3500);return}
+  armed=null;const sel=box.querySelector(`select[data-to="${CSS.escape(d)}"]`),to=sel?sel.value:'';LAY.divs=divNames();
+  if(to)mergeDiv(d,to);else{LAY.added=LAY.added.filter(v=>v!==d);LAY.divs=LAY.divs.filter(v=>v!==d)}laySave('Divisi dihapus')}
+ else if(m==='addag'){const n=val('newAgName').trim();if(!n)return;const id='manual:'+slug(n)+'-'+Date.now().toString(36);
+  LAY.extra.push({id,name:n,role:val('newAgRole').trim()||'Agent',div:val('newAgDiv')||'Hermes'});laySave('Agent ditambah')}
+ else if(m==='unhide'){const o=LAY.ag[b.dataset.id];if(o){delete o.hide;if(!Object.keys(o).length)delete LAY.ag[b.dataset.id]}laySave('Agent ditampilkan lagi')}
+ else if(m==='resetall'){if(armed!=='all'){armed='all';b.textContent='Yakin? Semua perubahan hilang';b.classList.add('arm');setTimeout(()=>{armed=null;b.textContent='Kembalikan semua ke bawaan';b.classList.remove('arm')},3500);return}
+  armed=null;LAY={divs:[],added:[],ren:{},ag:{},extra:[]};laySave('Dikembalikan ke bawaan')}});
+function editHtml(a){
+ const names=divNames(),cur=divOf(a).replace(/ \d+$/,''),isM=LAY.extra.some(x=>x.id===a.id);
+ return`<div class="ph"><b>Atur agent</b></div><small>${esc(a.id)}</small>
+<div class="ed"><label>Nama<input id="edName" value="${esc(a.name)}" maxlength="40"></label><label>Peran<input id="edRole" value="${esc(a.role)}" maxlength="40"></label>
+<label>Divisi (lantai)<select id="edDiv">${names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('')}<option value="__new">+ Divisi baru...</option></select></label>
+<label id="edNewL" hidden>Nama divisi baru<input id="edDivNew" maxlength="40"></label>
+<div class="rl"><button data-act="save">Simpan</button><button data-act="cancel">Batal</button></div>
+<small>Perubahan tampil di semua perangkat bila disimpan di server.</small>
+<div class="rl">${isM?'<button class="sm" data-act="delmanual">Hapus agent</button>':'<button class="sm" data-act="hide">Sembunyikan dari kantor</button>'}<button class="sm" data-act="reset">Kembalikan bawaan</button></div></div>`}
+document.getElementById('side').addEventListener('change',e=>{if(e.target.id==='edDiv')$('edNewL').hidden=e.target.value!=='__new'});
+function editAct(act){
+ const a=selAgent();if(!a){EDIT=null;renderPanel();return}const id=a.id;
+ if(act==='cancel'){EDIT=null;renderPanel();return}
+ if(act==='save'){const nm=$('edName').value.trim(),rl=$('edRole').value.trim();let dv=$('edDiv').value;
+  if(dv==='__new'){dv=$('edDivNew').value.trim();if(!dv)return;if(!divNames().includes(dv)){LAY.added.push(dv)}}
+  const x=LAY.extra.find(v=>v.id===id);
+  if(x){x.name=nm||x.name;x.role=rl||x.role;x.div=dv}
+  else{const o=LAY.ag[id]=LAY.ag[id]||{};if(nm&&nm!==a.name||o.name)o.name=nm;if(rl&&rl!==a.role||o.role)o.role=rl;o.div=dv}
+  EDIT=null;laySave('Agent diperbarui');return}
+ if(act==='hide'){(LAY.ag[id]=LAY.ag[id]||{}).hide=true;LAY.ag[id].name=LAY.ag[id].name||a.name;EDIT=null;SEL=null;laySave('Agent disembunyikan');return}
+ if(act==='delmanual'){LAY.extra=LAY.extra.filter(v=>v.id!==id);delete LAY.ag[id];EDIT=null;SEL=null;laySave('Agent dihapus');return}
+ if(act==='reset'){delete LAY.ag[id];EDIT=null;laySave('Agent dikembalikan ke bawaan')}}
 // ---------- unduh + GitHub ----------
 let DL=null;try{if(window.claude&&claude.use)claude.use('downloads').then(d=>DL=d).catch(()=>{})}catch(e){}
 async function saveFile(name,data,type){
@@ -372,12 +474,14 @@ function ui(){
  const plats=[...new Set(D.flatMap(d=>d.agents.map(a=>a.platform)).filter(Boolean))],sr=document.getElementById('sRun');
  const opts='<option value="all">Semua</option>'+plats.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
  if(sr._o!==opts&&document.activeElement!==sr){sr._o=opts;sr.innerHTML=opts;sr.value=plats.includes(S.run)?S.run:'all'}
- renderPanel();
+ renderPanel();renderMgr();
 }
 function meter(v){return`<div class="meter"><i style="width:${Math.round(Math.max(0,Math.min(1,v||0))*100)}%"></i></div>`}
 function resHtml(r){return`<div class="res"><b>${esc(r.task)}</b><small>${esc(r.name)} · ${new Date(r.t).toLocaleTimeString('id-ID')} · ${fmtDur(r.dur)}</small><span>${esc(r.summary)}</span><div class="rl"><button class="sm" data-act="md" data-r="${r.id}">Unduh .md</button><button class="sm" data-act="json" data-r="${r.id}">Unduh .json</button><button class="sm" data-act="up" data-r="${r.id}"${r.busy?' disabled':''}>${r.busy?'Mengunggah...':r.uploaded?'Unggah ulang':'Upload ke GitHub'}</button></div>${r.uploaded?`<a href="${esc(r.uploaded)}" target="_blank" rel="noopener">Lihat di GitHub</a>`:''}${r.err?`<span class="err">${esc(r.err)}</span>`:''}</div>`}
 function renderPanel(){
  const el=document.getElementById('side'),a=selAgent();let h;
+ if(EDIT&&a&&a.id===EDIT){if(el.dataset.mode!=='edit'){el.innerHTML=editHtml(a);el.dataset.mode='edit';hS=''}return}
+ EDIT=null;el.dataset.mode='';
  if(!a){
   const all=D.flatMap(d=>d.agents),cost=all.reduce((s,x)=>s+(x.m.cost||0),0),tk=all.reduce((s,x)=>s+(x.m.tin||0)+(x.m.tout||0),0);
   h=`<div class="ph"><b>Ringkasan</b></div><small>Klik agent di peta atau daftar untuk melihat detailnya.</small><div class="kv"><div><small>Agent sibuk</small>${all.filter(x=>x.state!=='idle').length}/${all.length}</div><div><small>Total token</small>${fmtN(tk)}</div><div><small>Biaya</small>$${cost.toFixed(3)}</div><div><small>Tugas selesai</small>${all.reduce((s,x)=>s+x.done,0)}</div></div>`+(S.budget>0?`<small>Anggaran $${S.budget}</small>${meter(cost/S.budget)}`:'')
@@ -385,7 +489,7 @@ function renderPanel(){
   +'<h3>Hasil terbaru</h3>'+(RES.slice(0,3).map(resHtml).join('')||'<small>Belum ada tugas selesai.</small>');
  }else{
   const m=a.m,cost=m.cost||0,run=a.state!=='idle',rs=RES.filter(r=>r.aid===a.id).slice(0,3);
-  h=`<div class="ph"><b>${esc(a.name)}</b><span class="chip" style="background:${COL[a.state]}">${LABEL[a.state]}</span><button class="sm" data-act="close" aria-label="Tutup detail">×</button></div>
+  h=`<div class="ph"><b>${esc(a.name)}</b><span class="chip" style="background:${COL[a.state]}">${LABEL[a.state]}</span><button class="sm" data-act="edit" aria-label="Atur agent">Atur</button><button class="sm" data-act="close" aria-label="Tutup detail">×</button></div>
 <small>Lantai ${flOf(a)+1} · ${esc(divOf(a))} · ${esc(a.role)}${a.platform?' · '+esc(a.platform):''}</small>
 <h3>Sedang dikerjakan</h3><p>${esc(a.task||'Tidak ada tugas')}</p>${a.tool?`<small>Tool: ${esc(a.tool)}</small>`:''}
 <h3>Komputasi</h3><div class="kv"><div><small>Token masuk</small>${fmtN(m.tin)}</div><div><small>Token keluar</small>${fmtN(m.tout)}</div><div><small>Panggilan tool</small>${fmtN(m.tools)}</div><div><small>Perkiraan biaya</small>$${cost.toFixed(4)}</div><div><small>Durasi tugas</small>${run?fmtDur(Date.now()-a.t0):'–'}</div><div><small>Tugas selesai</small>${a.done}</div></div>
@@ -397,7 +501,9 @@ function renderPanel(){
 }
 document.getElementById('bld').addEventListener('click',e=>{const b=e.target.closest('button');if(b){F=+b.dataset.f;hB='';ui()}});
 document.getElementById('side').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const act=b.dataset.act;
- if(act==='close'){SEL=null;renderPanel()}
+ if(act==='edit'){EDIT=SEL;renderPanel()}
+ else if(['save','cancel','hide','reset','delmanual'].includes(act))editAct(act);
+ else if(act==='close'){SEL=null;EDIT=null;renderPanel()}
  else if(act==='sel'){SEL=b.dataset.id;const a=selAgent();if(a){F=flOf(a);hB=''}ui()}
  else{const r=RES.find(x=>x.id===b.dataset.r);if(!r)return;
   if(act==='md')saveFile(fname(r,'md'),mdOf(r),'text/markdown');else if(act==='json')saveFile(fname(r,'json'),JSON.stringify(r,null,2),'application/json');else if(act==='up')upload(r)}});
@@ -526,7 +632,7 @@ cv.addEventListener('click',e=>{
 });
 cv.style.cursor='pointer';
 Promise.all([...Object.entries(X.imgs).map(([k,v])=>load(v).then(i=>IM[k]=i)),...Object.entries(X.chars).map(([k,v])=>load(v).then(i=>CH[k]=i))]).then(()=>{
- layout();paint(1);loadSet();applySet();ui();resize();requestAnimationFrame(frame);
+ layout();paint(1);loadSet();applySet();ui();resize();requestAnimationFrame(frame);layBoot();
  const q=new URLSearchParams(location.search).get('feed')||(()=>{try{return localStorage.getItem('hpo-feed')}catch(e){return null}})();
  if(q){FEEDURL=q;$('feedUrl').value=q;startFeed(q)}else{startDemo();
   if(/^https?:$/.test(location.protocol)&&!/github\.io$|claude\.(ai|com)$|usercontent/.test(location.hostname))

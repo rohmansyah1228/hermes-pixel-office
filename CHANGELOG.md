@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0
+- Panel Kelola divisi dan agent: tambah, ganti nama, urutkan, hapus divisi; ganti nama, pindah divisi, sembunyikan, dan tambah agent. Tombol Atur di detail agent.
+- Pengaturan disimpan di server (`layout.json`) lewat `/layout`; hanya bisa diubah dengan login, atau dari komputer server.
+
 ## 1.2.0
 - Satu profil Hermes = satu agent (bukan lagi satu sesi = satu agent). Token, biaya, dan aktivitas dibaca dari `state.db` tiap profil; subagent tampil sebagai agent tambahan.
 - Divisi diatur lewat `divisions.json`; `python3 hermes_bridge.py --diag` untuk memeriksa deteksi; `HERMES_VIEW=sessions` memulihkan tampilan lama.
