@@ -50,6 +50,17 @@ details{background:var(--panel);border:2px solid var(--line);border-radius:6px;p
 .setgrid label{display:grid;gap:2px;font-size:13px}.setgrid label.ck{display:flex;gap:6px;align-items:center}
 fieldset{grid-column:1/-1;border:1px solid var(--line);border-radius:6px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
 .err{color:#e0524f;font-size:12px}
+.fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--acc);color:#111;font-weight:700;border:2px solid #111;padding:10px 18px;border-radius:24px;box-shadow:0 3px 10px rgba(0,0,0,.35)}
+.chat{position:fixed;right:16px;bottom:calc(70px + env(safe-area-inset-bottom,0px));width:min(390px,calc(100vw - 32px));height:min(540px,calc(100vh - 110px));z-index:30;background:var(--panel);border:2px solid var(--ink);border-radius:8px;display:grid;grid-template-rows:auto auto 1fr auto;gap:6px;padding:10px;box-shadow:0 6px 22px rgba(0,0,0,.4)}
+.chat[hidden]{display:none}
+.ch-h{display:flex;gap:6px;align-items:center}.ch-h select{flex:1;min-width:0}
+#chatMsgs{overflow:auto;display:grid;align-content:start;gap:6px;padding:2px}
+.cm{padding:6px 10px;border-radius:8px;border:1px solid var(--line);white-space:pre-wrap;word-break:break-word;font-size:14px}
+.cm small{display:block;opacity:.7;font-size:11px}
+.cm.user{background:var(--acc);color:#111;justify-self:end;max-width:88%}.cm.agent{background:var(--bg);max-width:92%}.cm.sys{background:transparent;border-style:dashed;color:var(--mute);justify-self:center}
+.ch-f{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end}
+.ch-f textarea{font:inherit;color:var(--ink);background:var(--bg);border:2px solid var(--line);border-radius:4px;padding:6px 8px;resize:none}
+.ch-f textarea:focus-visible{outline:3px solid #e0a030}
 </style>
 </head>
 <body>
@@ -61,7 +72,10 @@ fieldset{grid-column:1/-1;border:1px solid var(--line);border-radius:6px;display
 <div class="row"><span id="hint" style="color:var(--mute);font-size:13px;flex:1;min-width:200px"></span><button id="zo" aria-label="Perkecil">−</button><button id="zf">Pas layar</button><button id="zi" aria-label="Perbesar">+</button></div>
 <div class="stage"><aside id="bld" aria-label="Daftar lantai"></aside><div id="wrap"><canvas id="c" aria-label="Kantor pixel lantai terpilih. Klik agent untuk melihat detail."></canvas></div><aside id="side" class="side" aria-live="polite"></aside></div>
 <div class="legend"><span><i class="dot" style="background:#4cc46a"></i>Bekerja</span><span><i class="dot" style="background:#e8c14a"></i>Berpikir</span><span><i class="dot" style="background:#e0524f"></i>Error</span><span><i class="dot" style="background:#8aa0b8"></i>Istirahat</span> · Klik agent untuk detail · Pintasan: T tema, N suasana, L label, Esc tutup</div>
+<button id="chatBtn" class="fab" aria-expanded="false" aria-controls="chat">💬 Chat</button>
+<aside id="chat" class="chat" hidden role="dialog" aria-label="Chat dengan agent"><div class="ch-h"><b>Chat</b><select id="chatTo" aria-label="Agent tujuan"></select><button class="sm" id="chatX" aria-label="Tutup chat">×</button></div><small id="chatSt"></small><div id="chatMsgs" aria-live="polite"></div><div class="ch-f"><textarea id="chatIn" rows="2" placeholder="Tanya atau beri instruksi... (Enter kirim, Shift+Enter baris baru)" aria-label="Pesan untuk agent"></textarea><button id="chatGo">Kirim</button></div></aside>
 <details id="set"><summary>Pengaturan</summary><div class="setgrid">
+<label>Endpoint chat (URL)<input id="chatUrl" placeholder="/chat"></label><label>Model chat (opsional)<input id="chatModel"></label>
 <label>Feed Hermes (URL)<input id="feedUrl" placeholder="http://127.0.0.1:8114/feed"></label><button id="feedGo">Hubungkan</button><button id="feedOff">Mode demo</button>
 <label>Tema<select id="sTheme"><option value="default">Default</option><option value="midnight">Midnight</option><option value="amber">Amber</option><option value="juniper">Juniper</option></select></label>
 <label>Suasana<select id="sAmb"><option value="auto">Otomatis</option><option value="day">Siang</option><option value="night">Malam</option></select></label>
@@ -252,12 +266,13 @@ const TASKS=['Membaca dokumen','Menjalankan tes','Mencari referensi','Menyusun l
 const SUMS=['Dokumen dibaca dan diringkas menjadi 5 poin utama.','Seluruh tes lulus, tidak ada regresi baru.','Ditemukan 7 referensi relevan dan disimpan ke catatan.','Draf laporan selesai dan siap ditinjau.','Pemanggilan tool berhasil tanpa error.'];
 let demoList=[['Engineering','Hermes|Orchestrator','Coder|Menulis kode','Tester|Menjalankan tes','Reviewer|Review kode'],['Riset','Researcher|Riset web','Writer|Menulis konten'],['Operasi','Deployer|Deploy dan monitor']].flatMap(r=>r.slice(1).map(s=>{const[n,ro]=s.split('|');return{id:r[0]+'/'+n,name:n,division:r[0],role:ro,platform:'hermes',state:'idle',task:'',tool:'',m:{tin:0,tout:0,tools:0,cost:0,ctx:0.05},result:null}}));
 function demoStep(){
- const x=demoList[Math.floor(Math.random()*demoList.length)],s=['idle','working','working','thinking','error'][Math.floor(Math.random()*5)];
+ const x=demoList[Math.floor(Math.random()*demoList.length)];if(x.pin)return;const s=['idle','working','working','thinking','error'][Math.floor(Math.random()*5)];
  const i=Math.floor(Math.random()*TASKS.length);x.result=null;
  if(s==='idle'&&x.state!=='idle')x.result={summary:SUMS[Math.floor(Math.random()*SUMS.length)]};
  x.state=s;x.task=s==='idle'?'':TASKS[i];x.tool=s==='working'?TOOLS[i]:'';
 }
 function demoTick(){
+ demoList.forEach(x=>{if(x.pin&&Date.now()>=x.pin){const tk=x.task;x.pin=0;x.state='idle';x.task='';x.tool='';x.result={summary:'(demo) Instruksi selesai: '+tk};chatAdd('agent','(demo) Selesai: '+tk+'. Ringkasan ada di panel detail > Hasil.',x.id,x.name)}});
  demoList.forEach(x=>{if(x.state!=='idle'){x.m.tin+=Math.round(rnd(150,700));x.m.tout+=Math.round(rnd(30,260));if(x.state==='working'&&Math.random()<.35)x.m.tools++;x.m.cost=(x.m.tin*3+x.m.tout*15)/1e6;x.m.ctx=Math.min(.95,x.m.ctx+.01)}});
  sync(demoList);demoList.forEach(x=>{x.result=null});
 }
@@ -333,17 +348,61 @@ setInterval(renderPanel,700);
 // pengaturan
 const $=id=>document.getElementById(id);
 function applySet(){cv.style.filter=THEMES[S.theme]||'none'}
-function loadSet(){$('sTheme').value=S.theme;$('sAmb').value=S.amb;$('sChars').value=String(S.chars);$('sBud').value=S.budget||'';$('sLab').checked=S.labels;$('ghRepo').value=GH.repo;$('ghBr').value=GH.branch;$('ghDir').value=GH.dir;$('ghAuto').checked=S.auto;$('ghTok').value=tok();$('ghRem').checked=!!localStorage.getItem('hpo-tok');$('feedUrl').value=FEEDURL}
+function loadSet(){$('sTheme').value=S.theme;$('sAmb').value=S.amb;$('sChars').value=String(S.chars);$('sBud').value=S.budget||'';$('chatUrl').value=S.chatUrl||'';$('chatModel').value=S.chatModel||'';$('sLab').checked=S.labels;$('ghRepo').value=GH.repo;$('ghBr').value=GH.branch;$('ghDir').value=GH.dir;$('ghAuto').checked=S.auto;$('ghTok').value=tok();$('ghRem').checked=!!localStorage.getItem('hpo-tok');$('feedUrl').value=FEEDURL}
 $('set').addEventListener('change',e=>{
- S.theme=$('sTheme').value;S.amb=$('sAmb').value;S.chars=+$('sChars').value;S.budget=+$('sBud').value||0;S.labels=$('sLab').checked;S.run=$('sRun').value||'all';S.auto=$('ghAuto').checked;
+ S.theme=$('sTheme').value;S.amb=$('sAmb').value;S.chars=+$('sChars').value;S.budget=+$('sBud').value||0;S.labels=$('sLab').checked;S.run=$('sRun').value||'all';S.chatUrl=$('chatUrl').value.trim();S.chatModel=$('chatModel').value.trim();S.auto=$('ghAuto').checked;
  GH.repo=$('ghRepo').value.trim();GH.branch=$('ghBr').value.trim()||'main';GH.dir=$('ghDir').value.trim()||'hermes-results';
  try{sessionStorage.removeItem('hpo-tok');localStorage.removeItem('hpo-tok');const v=$('ghTok').value.trim();if(v)(($('ghRem').checked?localStorage:sessionStorage).setItem('hpo-tok',v))}catch(er){}
  keep();applySet()});
 $('feedGo').onclick=()=>{const u=$('feedUrl').value.trim();if(u)startFeed(u)};
 $('feedOff').onclick=()=>{try{localStorage.removeItem('hpo-feed')}catch(e){}D=[];FEEDURL='';startDemo()};
 addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test((document.activeElement||{}).tagName||''))return;const k=e.key.toLowerCase();
- if(k==='t'){const ks=Object.keys(THEMES);S.theme=ks[(ks.indexOf(S.theme)+1)%ks.length]}else if(k==='n'){const o=['auto','day','night'];S.amb=o[(o.indexOf(S.amb)+1)%3]}else if(k==='l')S.labels=!S.labels;else if(k==='escape'){SEL=null;renderPanel();return}else return;
+ if(k==='t'){const ks=Object.keys(THEMES);S.theme=ks[(ks.indexOf(S.theme)+1)%ks.length]}else if(k==='n'){const o=['auto','day','night'];S.amb=o[(o.indexOf(S.amb)+1)%3]}else if(k==='l')S.labels=!S.labels;else if(k==='c'){toggleChat();return}else if(k==='escape'){if(chatOpen()){toggleChat(false);return}SEL=null;renderPanel();return}else return;
  keep();loadSet();applySet()});
+// ---------- chat ----------
+let CHAT=[];try{CHAT=JSON.parse(localStorage.getItem('hpo-chat')||'[]')}catch(e){}
+let CTARGET=null,chatBusy=false,chatSig='';
+const chatAll=()=>D.flatMap(d=>d.agents.map(a=>({a,d})));
+const target=()=>{const all=chatAll();return(all.find(x=>x.a.id===CTARGET)||all[0]||{}).a||null};
+const chatOpen=()=>!$('chat').hidden;
+function chatAdd(role,text,aid,name){CHAT.push({role,text:String(text),aid,name,t:Date.now()});if(CHAT.length>100)CHAT=CHAT.slice(-100);try{localStorage.setItem('hpo-chat',JSON.stringify(CHAT))}catch(e){}chatRender()}
+function chatRender(){const box=$('chatMsgs'),a=target();if(!box)return;const ms=CHAT.filter(m=>m.aid===(a&&a.id));
+ box.innerHTML=ms.length?ms.map(m=>`<div class="cm ${m.role}"><small>${m.role==='user'?'Anda':esc(m.name||'Agent')} · ${new Date(m.t).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}</small>${esc(m.text)}</div>`).join(''):`<div class="cm sys">Belum ada percakapan. Ketik pertanyaan atau instruksi untuk ${esc(a?a.name:'agent')}.</div>`+(chatBusy?'':'');
+ if(chatBusy)box.innerHTML+='<div class="cm sys">'+esc(a?a.name:'Agent')+' sedang menjawab...</div>';box.scrollTop=box.scrollHeight}
+function chatSel(){const s=$('chatTo'),all=chatAll(),sig=all.map(x=>x.a.id+'|'+x.a.name+'|'+x.d.name).join(';')+'#'+CTARGET;
+ if(sig!==chatSig){chatSig=sig;const cur=target();s.innerHTML=all.map(x=>`<option value="${esc(x.a.id)}">${esc(x.a.name)} · ${esc(x.d.name)}</option>`).join('')||'<option value="">Belum ada agent</option>';if(cur)s.value=cur.id;chatRender()}
+ const a=target();$('chatSt').textContent=a?('Status: '+LABEL[a.state]+(a.task?' · '+a.task:'')):'Menunggu data agent dari Hermes...'}
+function toggleChat(v){const o=v===undefined?!chatOpen():v;$('chat').hidden=!o;$('chatBtn').setAttribute('aria-expanded',String(o));if(o){chatSig='';chatSel();chatRender();setTimeout(()=>$('chatIn').focus(),0)}}
+const pickStr=(...v)=>v.find(x=>typeof x==='string'&&x.trim());
+async function chatSend(){
+ const inp=$('chatIn'),text=inp.value.trim(),a=target();if(!text||chatBusy)return;
+ if(!a){log('Chat: belum ada agent');return}
+ inp.value='';chatAdd('user',text,a.id,a.name);say(a,'Instruksi diterima',3000);addLog(a,'Instruksi: '+text.slice(0,60));
+ if(MODE==='demo'){demoChat(a,text);return}
+ if(!S.chatUrl){chatAdd('sys','Endpoint chat belum diisi. Buka Pengaturan > Endpoint chat (URL).',a.id,'Sistem');return}
+ chatBusy=true;chatRender();
+ try{
+  const oai=/chat\/completions/.test(S.chatUrl),hist=CHAT.filter(m=>m.aid===a.id&&m.role!=='sys').slice(-12).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
+  const body=oai?{...(S.chatModel?{model:S.chatModel}:{}),messages:hist,stream:false}:{agent:a.name,agent_id:a.id,division:divOf(a),message:text,history:hist.slice(0,-1)};
+  const r=await fetch(S.chatUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(pickStr(j.error&&j.error.message,j.error,j.detail)||('HTTP '+r.status));
+  const ch=j.choices&&j.choices[0]&&j.choices[0].message;
+  chatAdd('agent',pickStr(j.reply,j.response,j.message,j.text,ch&&ch.content)||'(Agent tidak mengirim balasan teks)',a.id,a.name);
+ }catch(e){chatAdd('sys','Gagal mengirim: '+(/fetch|network|load failed/i.test(String(e.message))?'endpoint tidak terjangkau. Periksa URL dan CORS; dari GitHub Pages gunakan jembatan lokal (hermes_bridge.py).':e.message),a.id,'Sistem')}
+ chatBusy=false;chatRender();
+}
+function demoChat(a,text){
+ chatBusy=true;chatRender();
+ setTimeout(()=>{const x=demoList.find(v=>v.id===a.id),q=text.length>60?text.slice(0,57)+'...':text;
+  if(/^(halo|hai|hi|hello|apa kabar)\b/i.test(text)||(/\?\s*$/.test(text)&&text.length<50)){chatAdd('agent','(demo) Saya '+a.name+', '+a.role+'. Saat ini: '+(a.task||'sedang istirahat')+'. Beri saya instruksi dan akan saya kerjakan.',a.id,a.name)}
+  else if(x){chatAdd('agent','(demo) Siap, saya kerjakan: '+q,a.id,a.name);x.state='working';x.task=q;x.tool='terminal';x.result=null;x.pin=Date.now()+14000}
+  chatBusy=false;chatRender()},900);
+}
+$('chatBtn').onclick=()=>toggleChat();$('chatX').onclick=()=>toggleChat(false);$('chatGo').onclick=chatSend;
+$('chatTo').onchange=e=>{CTARGET=e.target.value;chatSig='';chatSel();const a=target();if(a){SEL=a.id;F=flOf(a);hB='';ui()}};
+$('chatIn').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();chatSend()}else if(e.key==='Escape')toggleChat(false)});
+setInterval(()=>{if(chatOpen())chatSel()},1000);
 // ---------- render ----------
 const cv=document.getElementById('c'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap');
 let zoom=1,fit=true;
