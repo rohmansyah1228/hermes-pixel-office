@@ -19,7 +19,7 @@ import hashlib, hmac, html, json, os, re, secrets, sqlite3, subprocess, threadin
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 HERE = Path(__file__).resolve().parent
 
 
@@ -676,7 +676,12 @@ input{width:100%;background:#140f1f;color:#f4e9d8;border:2px solid #5b4a82;paddi
 button{font:400 10px/1.5 "Press Start 2P",monospace;background:#ffcc33;color:#1a1329;border:3px solid #0b0814;padding:12px;cursor:pointer;box-shadow:inset 3px 3px 0 #fff3b8,inset -3px -3px 0 #b88a00}
 button:active{transform:translate(2px,2px)}input:focus-visible,button:focus-visible{outline:3px solid #ffcc33;outline-offset:1px}.e{color:#ff7a74;font-size:15px}</style></head>
 <body><form method="post" action="/login"><h1>Hermes Pixel Office</h1><p>Masukkan password untuk membuka sesi.</p>__ERR__
-<input type="password" name="password" autocomplete="current-password" placeholder="Password" autofocus required><button type="submit">Masuk</button></form></body></html>"""
+<input type="password" name="password" autocomplete="current-password" placeholder="Password" autofocus required><button type="submit">Masuk</button></form><script>(function(){var D={en:["Log in","Enter the password to open a session.","Wrong password."],ms:["Log masuk","Masukkan kata laluan untuk membuka sesi.","Kata laluan salah."],es:["Entrar","Introduce la contraseña para abrir la sesión.","Contraseña incorrecta."],fr:["Connexion","Saisissez le mot de passe pour ouvrir une session.","Mot de passe incorrect."],de:["Anmelden","Passwort eingeben, um eine Sitzung zu öffnen.","Falsches Passwort."],zh:["登录","输入密码以开启会话。","密码错误。"],ja:["ログイン","パスワードを入力してセッションを開始します。","パスワードが違います。"]};
+var l="auto";try{l=localStorage.getItem("hpo-lang")||"auto"}catch(e){}
+if(l==="auto"){l=((navigator.language||"en").toLowerCase().split("-")[0]);if(l==="in")l="id"}
+var d=D[l]||(l==="id"?null:D.en);if(!d)return;document.documentElement.lang=l in D?l:"en";
+document.title=d[0]+" - Hermes Pixel Office";var p=document.querySelector("form p:not(.e)"),b=document.querySelector("button"),e=document.querySelector("p.e");
+if(p)p.textContent=d[1];if(b)b.textContent=d[0];if(e&&/salah/i.test(e.textContent))e.textContent=d[2]})()</script></body></html>"""
 
 
 class Handler(BaseHTTPRequestHandler):

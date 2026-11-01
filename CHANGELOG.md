@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8.0
+- Multi bahasa: Indonesia, English, Melayu, Español, Français, Deutsch, 中文, 日本語. Otomatis mengikuti bahasa perangkat, atau pilih manual di Pengaturan > Bahasa (diingat). Halaman login ikut diterjemahkan.
+
 ## 1.7.0
 - Musik latar lo-fi chiptune (dibuat di browser dengan WebAudio, tanpa file audio): tombol Musik dan slider volume di bagian atas. Tombol Putar/Jeda, Stop, volume − / + dan slider. Bawaan mati; pilihan diingat.
 
