@@ -381,7 +381,7 @@ function renderPanel(){
  if(!a){
   const all=D.flatMap(d=>d.agents),cost=all.reduce((s,x)=>s+(x.m.cost||0),0),tk=all.reduce((s,x)=>s+(x.m.tin||0)+(x.m.tout||0),0);
   h=`<div class="ph"><b>Ringkasan</b></div><small>Klik agent di peta atau daftar untuk melihat detailnya.</small><div class="kv"><div><small>Agent sibuk</small>${all.filter(x=>x.state!=='idle').length}/${all.length}</div><div><small>Total token</small>${fmtN(tk)}</div><div><small>Biaya</small>$${cost.toFixed(3)}</div><div><small>Tugas selesai</small>${all.reduce((s,x)=>s+x.done,0)}</div></div>`+(S.budget>0?`<small>Anggaran $${S.budget}</small>${meter(cost/S.budget)}`:'')
-  +'<h3>Daftar agent</h3>'+(D.map((d,i)=>`<small>Lantai ${i+1} · ${esc(d.name)}</small>`+d.agents.map(x=>`<button class="ro" data-act="sel" data-id="${esc(x.id)}"><i class="dot" style="background:${COL[x.state]}"></i><b>${esc(x.name)}</b><small>${esc(x.task||LABEL[x.state])}</small></button>`).join('')).join('')||'<small>Belum ada agent.</small>')
+  +'<h3>Daftar agent · Lantai '+(F+1)+'</h3>'+((D[F]?[D[F]]:[]).map(d=>`<small>${esc(d.name)} · ${d.agents.length} agent</small>`+d.agents.map(x=>`<button class="ro" data-act="sel" data-id="${esc(x.id)}"><i class="dot" style="background:${COL[x.state]}"></i><b>${esc(x.name)}</b><small>${esc(x.task||LABEL[x.state])}</small></button>`).join('')).join('')||'<small>Belum ada agent.</small>')
   +'<h3>Hasil terbaru</h3>'+(RES.slice(0,3).map(resHtml).join('')||'<small>Belum ada tugas selesai.</small>');
  }else{
   const m=a.m,cost=m.cost||0,run=a.state!=='idle',rs=RES.filter(r=>r.aid===a.id).slice(0,3);
