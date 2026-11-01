@@ -19,7 +19,7 @@ import hashlib, hmac, html, json, os, re, secrets, sqlite3, subprocess, threadin
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 HERE = Path(__file__).resolve().parent
 
 

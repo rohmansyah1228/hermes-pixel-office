@@ -446,8 +446,8 @@ function editHtml(a){
 ${pr&&pr!=='default'?`<h3>Hapus profil Hermes permanen</h3><p class="err">Menghapus seluruh profil ${esc(pr)} di server: konfigurasi, memori, sesi, dan skill. Tidak bisa dibatalkan.</p><label>Ketik <b>${esc(pr)}</b> untuk konfirmasi<input id="edConfirm" autocomplete="off"></label><div class="rl"><button class="sm arm" data-act="realdelete">Hapus profil permanen</button></div><small>Menjalankan: hermes profile delete ${esc(pr)} --yes</small>`:''}</div>`;
  const note=!BR?'Mode demo atau tanpa server: menu bertanda * butuh bridge.':(!BR.admin?'Menu bertanda * dimatikan di server (BRIDGE_ADMIN=1).':'');
  return head('Atur agent')+`${note?`<small>${esc(note)}</small>`:''}<div class="menu">
-${pr?'<button class="mi" data-act="use">&#10003; Jadikan aktif *</button><button class="mi" data-v="model">Ganti model *</button>':''}<button class="mi" data-v="desc">Edit deskripsi</button>
-${pr?'<button class="mi" data-v="soul">Edit SOUL.md *</button><button class="mi" data-act="skills">Kelola skill &amp; tool</button><button class="mi" data-act="copycli">Salin perintah CLI</button>':''}<button class="mi" data-v="rename">Ganti nama${pr&&pr!=='default'?' *':''}</button><button class="mi" data-v="layout">Divisi dan tampilan</button><button class="mi danger" data-v="delete">Hapus</button></div>`}
+${pr?'<button class="mi" data-v="model">Ganti model *</button>':''}<button class="mi" data-v="desc">Edit deskripsi</button>
+${pr?'<button class="mi" data-v="soul">Edit SOUL.md *</button><button class="mi" data-act="copycli">Salin perintah CLI</button>':''}<button class="mi" data-v="rename">Ganti nama${pr&&pr!=='default'?' *':''}</button><button class="mi" data-v="layout">Divisi dan tampilan</button><button class="mi danger" data-v="delete">Hapus</button></div>`}
 document.getElementById('side').addEventListener('change',e=>{if(e.target.id==='edDiv')$('edNewL').hidden=e.target.value!=='__new'});
 function showView(v){EDITV=v;$('side').dataset.mode='';renderPanel();if(v==='soul')loadSoul()}
 async function loadSoul(){const a=selAgent(),box=$('edSoul');if(!a||!box)return;const j=await adm('soul_get',{},profOf(a));
