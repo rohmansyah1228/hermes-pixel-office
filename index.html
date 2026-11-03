@@ -246,13 +246,18 @@ function arrive(d,a,now){
  else if(a.goal==='rest'){a.mode='rest';a.until=now+rnd(14000,32000);a.dir=a.rest.f;say(a,REST_SAY[Math.floor(Math.random()*REST_SAY.length)],4500)}
  else{a.mode='stay';a.until=now+rnd(3000,6000);if(a.poi.f)a.dir=a.poi.f;const t=POIT[a.poi.k];say(a,t[Math.floor(Math.random()*t.length)],4000)}
 }
+function faceDir(a,path){/* arah dari titik ~56px di depan di jalur + histeresis, agar sprite tidak berkedip saat jalan diagonal */
+ let tx=a.x,ty=a.y+NAVY,acc=0,px=tx,py=ty;for(const[x,y]of path){acc+=Math.hypot(x-px,y-py);px=x;py=y;if(acc>=56)break}
+ const dx=px-a.x,dy=py-(a.y+NAVY);if(Math.hypot(dx,dy)<.5)return;const ax=Math.abs(dx),ay=Math.abs(dy),cur=a.dir,horiz=cur==='left'||cur==='right';
+ const H=dx>0?'right':'left',V=dy>0?'down':'up';
+ if(horiz)a.dir=ay>ax*1.5?V:H;else if(cur==='up'||cur==='down')a.dir=ax>ay*1.5?H:V;else a.dir=ax>ay?H:V}
 function stepAgent(d,a,now,dt){
  const want=a.state!=='idle';
  if(want&&a.mode!=='sit'&&!(a.mode==='move'&&a.goal==='seat'))goSeat(d,a);
  if(a.mode==='move'){
   let rem=SPEED*dt/1000;
   while(rem>0&&a.path.length){const[px,py]=a.path[0],dx=px-a.x,dy=py-(a.y+NAVY),dd=Math.hypot(dx,dy);
-   if(dd>.5)a.dir=Math.abs(dx)>Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'down':'up');
+   if(dd>.5)faceDir(a,a.path);
    if(dd<=rem){a.x=px;a.y=py-NAVY;a.path.shift();rem-=dd}else{a.x+=dx/dd*rem;a.y+=dy/dd*rem;rem=0}}
   if(!a.path.length)arrive(d,a,now);
  }else if(a.mode==='stay'){if(now>a.until&&!want)goSeat(d,a)}
@@ -588,7 +593,7 @@ function frame(now){
  if(caul)ctx.drawImage(IM.cauldron,(Math.floor(now/125)%12)*96,0,96,96,caul[0],caul[1],96,96);
  const ags=[...d.agents].sort((p,q)=>p.y-q.y);
  const front=a=>a.mode!=='sit'&&BANDS.some(b=>a.x>=b[0]&&a.x<=b[1]&&a.y+34>b[2]);
- const drawAg=a=>{ctx.globalAlpha=dim(a)?.3:1;const mv=a.mode==='move',rs=a.mode==='rest',row=rs?3:mv?2:1,fps=mv?10:rs?4:8,fr=rs?3*56+(a.dir==='left'?6:0)+Math.floor(now/1000*fps)%6:row*56+(DIR[a.dir]||3)*6+Math.floor(now/1000*fps)%6;
+ const drawAg=a=>{ctx.globalAlpha=dim(a)?.3:1;const mv=a.mode==='move',rs=a.mode==='rest',row=rs?3:mv?2:1,fps=mv?10:rs?4:8,fr=rs?3*56+(a.dir==='left'?6:0)+Math.floor(now/1000*fps)%6:row*56+(DIR[a.dir]??3)*6+Math.floor(now/1000*fps)%6;
   ctx.drawImage(CH[a.sheet],(fr%56)*48,Math.floor(fr/56)*96,48,96,Math.round(a.x-24),Math.round(a.y-48+(a.mode==='rest'?SITDY:0)),48,96);ctx.globalAlpha=1};
  ags.filter(a=>!front(a)).forEach(drawAg);ctx.drawImage(OVC,0,0);ags.filter(front).forEach(drawAg);
  ctx.drawImage(OV,0,0);

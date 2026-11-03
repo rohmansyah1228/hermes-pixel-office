@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8.1
+- Perbaikan animasi jalan: saat agent berjalan ke kanan, sprite menghadap ke depan dan terlihat meluncur; kini memakai sprite jalan samping kanan. Arah sprite juga dihaluskan saat berjalan diagonal.
+
 ## 1.8.0
 - Multi bahasa: Indonesia, English, Melayu, Español, Français, Deutsch, 中文, 日本語. Otomatis mengikuti bahasa perangkat, atau pilih manual di Pengaturan > Bahasa (diingat). Halaman login ikut diterjemahkan.
 
