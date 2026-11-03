@@ -180,7 +180,7 @@ const gl=(n,c,r)=>X.L[n][r*X.cols+c]||0;
 function stations(n){const a=[];for(let s=0;s<n-1;s++){const row=s<3?0:1,k=row?s-3:s;a.push({c0:4+3*k,r:row?9:6,src:s%3})}return a}
 /* meja tamu: slot meja kerja yang kosong diisi set meja + 2 kursi (disalin dari set yang ada di peta), selang-seling maks 3 */
 const GSRC=[1056,480,144,96],GDX=-1056,GDY=-480;
-function guestSets(n){const all=stations(8),un=all.slice(Math.max(0,n-1)),o=[];for(let i=0;i<un.length&&o.length<3;i+=2)o.push(un[i]);return o.map(s=>({c0:s.c0,r:s.r,dx:s.c0*48-1056,dy:s.r*48-480}))}
+function guestSets(n){if(n>=2)return[];const all=stations(8),un=all.slice(Math.max(0,n-1)),o=[];for(let i=0;i<un.length&&o.length<3;i+=2)o.push(un[i]);return o.map(s=>({c0:s.c0,r:s.r,dx:s.c0*48-1056,dy:s.r*48-480}))}
 const guestRects=n=>guestSets(n).map(g=>[1110.49+g.dx,505.5+g.dy,36.1,62.05]);
 const guestRests=n=>guestSets(n).flatMap(g=>[{x:1088+g.dx,y:533+g.dy,ax:1088+g.dx,ay:498+g.dy,f:'right',g:1},{x:1163+g.dx,y:533+g.dy,ax:1163+g.dx,ay:498+g.dy,f:'left',g:1}]);
 function seatsFor(n){return[{x:boss.x,y:boss.y,f:boss.f},...stations(n).map(s=>({x:(s.c0+1.5)*48,y:s.r*48+75,f:'up'}))]}

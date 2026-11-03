@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.9.1
+- Meja tamu hanya muncul jika lantai hanya berisi satu agent (ruang kerja kosong). Dengan dua agent atau lebih, meja tamu hilang.
+
 ## 1.9.0
 - Ruang kosong (slot meja kerja yang tidak terpakai) kini diberi meja tamu dengan dua kursi, selang-seling maksimal 3 set per lantai. Kursinya bisa dipakai agent saat istirahat.
 
