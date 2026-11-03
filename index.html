@@ -178,6 +178,11 @@ const inCub=(c,r)=>c>=3&&c<=12&&r>=6&&r<=10,inAl=(c,r)=>c>=8&&c<=9&&r>=13&&r<=16
 const skip=(n,c,r)=>(n!=='floor'&&n!=='objects'&&inCub(c,r))||(n!=='floor'&&n!=='walls'&&inAl(c,r));
 const gl=(n,c,r)=>X.L[n][r*X.cols+c]||0;
 function stations(n){const a=[];for(let s=0;s<n-1;s++){const row=s<3?0:1,k=row?s-3:s;a.push({c0:4+3*k,r:row?9:6,src:s%3})}return a}
+/* meja tamu: slot meja kerja yang kosong diisi set meja + 2 kursi (disalin dari set yang ada di peta), selang-seling maks 3 */
+const GSRC=[1056,480,144,96],GDX=-1056,GDY=-480;
+function guestSets(n){const all=stations(8),un=all.slice(Math.max(0,n-1)),o=[];for(let i=0;i<un.length&&o.length<3;i+=2)o.push(un[i]);return o.map(s=>({c0:s.c0,r:s.r,dx:s.c0*48-1056,dy:s.r*48-480}))}
+const guestRects=n=>guestSets(n).map(g=>[1110.49+g.dx,505.5+g.dy,36.1,62.05]);
+const guestRests=n=>guestSets(n).flatMap(g=>[{x:1088+g.dx,y:533+g.dy,ax:1088+g.dx,ay:498+g.dy,f:'right',g:1},{x:1163+g.dx,y:533+g.dy,ax:1163+g.dx,ay:498+g.dy,f:'left',g:1}]);
 function seatsFor(n){return[{x:boss.x,y:boss.y,f:boss.f},...stations(n).map(s=>({x:(s.c0+1.5)*48,y:s.r*48+75,f:'up'}))]}
 let paintKey='';
 function paint(n){
@@ -194,13 +199,14 @@ function paint(n){
   ['walls','ground','furniture'].forEach(nm=>{for(let dc=0;dc<3;dc++)[8,9].forEach(r=>{const g=gl(nm,sc+dc,r);if(g)drawTile(a,g,(s.c0+dc)*TS,(s.r+r-8)*TS)})});
   for(let dc=0;dc<3;dc++)[9,10].forEach(r=>{const g=gl('overhead',sc+dc,r);if(g)drawTile(oc,g,(s.c0+dc)*TS,(s.r+r-8)*TS)});BANDS.push([s.c0*48-10,(s.c0+3)*48+10,s.r*48+103]);
  });
+ guestSets(n).forEach(g=>[B1,B2,OV,OVC].forEach(c=>c.getContext('2d').drawImage(c,GSRC[0],GSRC[1],GSRC[2],GSRC[3],g.dx+1056,g.dy+480,GSRC[2],GSRC[3])));
  paintKey=F+':'+n;
 }
 // ---------- navigation ----------
 const CS=16,PAD=8,GC=Math.ceil(MW/CS),GR=Math.ceil(MH/CS);let BL=new Uint8Array(GC*GR);
 function navFor(n){const bl=new Uint8Array(GC*GR);
  const rs=X.coll.filter(([x,y])=>{x=Math.round(x);y=Math.round(y);return!((x===188&&y===363)||(x===384&&y===759)||(x===432&&y===650))});
- stations(n).forEach(s=>rs.push([s.c0*48-4,s.r*48,145,96]));
+ stations(n).forEach(s=>rs.push([s.c0*48-4,s.r*48,145,96]));guestRects(n).forEach(r=>rs.push(r));
  rs.forEach(([x,y,w,h])=>{for(let j=Math.max(0,Math.floor((y-PAD)/CS));j<=Math.min(GR-1,Math.floor((y+h+PAD)/CS));j++)for(let i=Math.max(0,Math.floor((x-PAD)/CS));i<=Math.min(GC-1,Math.floor((x+w+PAD)/CS));i++)bl[j*GC+i]=1});
  return bl}
 const free=(i,j)=>i>=0&&j>=0&&i<GC&&j<GR&&!BL[j*GC+i];
@@ -235,7 +241,7 @@ const SITDY=0;
 const seatOf=(d,a)=>d.seats[Math.min(a.si,d.seats.length-1)];
 function goSeat(d,a){BL=d.nav;a.rest=null;const s=seatOf(d,a);const pth=astar(a.x,a.y+NAVY,s.x,s.y+NAVY);a.goal='seat';if(!pth){a.path=[];arrive(d,a,performance.now());return}a.path=pth;a.mode='move'}
 function goRest(d,a){BL=d.nav;const used=new Set(d.agents.filter(x=>x!==a&&x.rest).map(x=>x.rest));
- const free=RESTS.filter(r=>!used.has(r));if(!free.length)return false;
+ const free=(d.rests||RESTS).filter(r=>!used.has(r));if(!free.length)return false;
  for(let k=0;k<3;k++){const r=free[Math.floor(Math.random()*free.length)],pth=astar(a.x,a.y+NAVY,r.ax,r.ay);
   if(pth){a.path=[...pth,[r.x,r.y]];a.mode='move';a.goal='rest';a.rest=r;return true}}
  return false}
@@ -268,7 +274,7 @@ function stepAgent(d,a,now,dt){
  }
 }
 function layout(){
- D.forEach(d=>{const n=d.agents.length;d.seats=seatsFor(Math.max(1,n));d.nav=navFor(Math.max(1,n));
+ D.forEach(d=>{const n=d.agents.length;d.seats=seatsFor(Math.max(1,n));d.nav=navFor(Math.max(1,n));d.rests=RESTS.concat(guestRests(Math.max(1,n)));
   d.agents.forEach((a,i)=>{
    if(a.x==null){const s=d.seats[Math.min(i,d.seats.length-1)];a.x=s.x;a.y=s.y;a.dir=s.f;a.mode='sit'}
    if(a.si!==i||a.n!==n){const first=a.si<0;a.si=i;a.n=n;if(!first&&a.mode==='sit')goSeat(d,a)}

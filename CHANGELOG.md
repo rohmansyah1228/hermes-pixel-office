@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.9.0
+- Ruang kosong (slot meja kerja yang tidak terpakai) kini diberi meja tamu dengan dua kursi, selang-seling maksimal 3 set per lantai. Kursinya bisa dipakai agent saat istirahat.
+
 ## 1.8.1
 - Perbaikan animasi jalan: saat agent berjalan ke kanan, sprite menghadap ke depan dan terlihat meluncur; kini memakai sprite jalan samping kanan. Arah sprite juga dihaluskan saat berjalan diagonal.
 
