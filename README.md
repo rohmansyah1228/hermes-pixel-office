@@ -1,5 +1,7 @@
 # Hermes Pixel Office
 
+![Tampilan Hermes Pixel Office](docs/screenshot.png)
+
 Kantor pixel bertingkat untuk agent Hermes: satu divisi = satu lantai, meja/kursi/komputer mengikuti jumlah agent, klik agent untuk melihat tugas dan komputasinya, hasil bisa diunduh atau diunggah ke GitHub.
 
 Tanpa server, halaman jalan dalam **mode demo**. Untuk data nyata, jalankan `hermes_bridge.py` di server Hermes Anda.
